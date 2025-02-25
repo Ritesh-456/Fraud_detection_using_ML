@@ -96,6 +96,8 @@ A hybrid fraud detection system that analyzes URLs and QR codes to identify pote
 ## 👨‍💻 Contributors
 
 Your Name - Ritesh Brahmachari
+            Satyabrata Panigrahi
+            Tanisha Dutta
 
 ## 📜 License
 
