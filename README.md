@@ -91,11 +91,11 @@ A hybrid fraud detection system that analyzes URLs and QR codes to identify pote
 
 ## 📸 Screenshots
 
-(Add images of the UI & sample results here!)
+![alt text](image.png)
 
 ## 👨‍💻 Contributors
 
-Your Name - Developer & Maintainer
+Your Name - Ritesh Brahmachari
 
 ## 📜 License
 
