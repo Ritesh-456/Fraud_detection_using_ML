@@ -1,0 +1,197 @@
+:root {
+    --primary-color: #2563eb;
+    --danger-color: #dc2626;
+    --success-color: #16a34a;
+    --warning-color: #d97706;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+    background-color: #f3f4f6;
+    min-height: 100vh;
+    padding: 2rem;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.header {
+    text-align: center;
+    margin-bottom: 2rem;
+    padding: 1rem;
+    background: white;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.header h1 {
+    color: var(--primary-color);
+    margin-bottom: 0.5rem;
+}
+
+.header p {
+    color: #666;
+}
+
+.main-content {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+    margin-bottom: 2rem;
+}
+
+.card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 10px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.card h2 {
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+    font-size: 1.25rem;
+}
+
+.input-group {
+    margin-bottom: 1rem;
+}
+
+.input-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: #374151;
+}
+
+.input-group input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 1rem;
+}
+
+.input-group input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.button {
+    background: var(--primary-color);
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background-color 0.2s;
+}
+
+.button:hover {
+    background-color: #1d4ed8;
+}
+
+.result-card {
+    margin-top: 1rem;
+    padding: 1rem;
+    border-radius: 6px;
+    display: none;
+}
+
+.result-card.fraud {
+    background-color: #fee2e2;
+    border: 1px solid var(--danger-color);
+}
+
+.result-card.safe {
+    background-color: #dcfce7;
+    border: 1px solid var(--success-color);
+}
+
+.result-card.warning {
+    background-color: #fef3c7;
+    border: 1px solid var(--warning-color);
+}
+
+.result-details {
+    margin-top: 1rem;
+}
+
+.risk-factors {
+    margin-top: 0.5rem;
+    padding-left: 1.5rem;
+}
+
+.confidence-bar {
+    margin-top: 0.5rem;
+    height: 8px;
+    background-color: #e5e7eb;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.confidence-bar-fill {
+    height: 100%;
+    background-color: var(--primary-color);
+    transition: width 0.3s ease;
+}
+
+.qr-upload-area {
+    border: 2px dashed #d1d5db;
+    padding: 2rem;
+    text-align: center;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+
+.qr-upload-area:hover {
+    border-color: var(--primary-color);
+}
+
+.history-list {
+    list-style: none;
+}
+
+.history-item {
+    padding: 0.75rem;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.history-item:last-child {
+    border-bottom: none;
+}
+
+.status-badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-size: 0.875rem;
+}
+
+.status-badge.fraud {
+    background-color: #fee2e2;
+    color: var(--danger-color);
+}
+
+.status-badge.safe {
+    background-color: #dcfce7;
+    color: var(--success-color);
+}
+
+@media (max-width: 768px) {
+    .main-content {
+        grid-template-columns: 1fr;
+    }
+}
