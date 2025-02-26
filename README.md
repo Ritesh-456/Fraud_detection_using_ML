@@ -91,7 +91,7 @@ A hybrid fraud detection system that analyzes URLs and QR codes to identify pote
 
 ## 📸 Screenshots
 
-![alt text](image.png)
+![alt text](/images/image.png)
 
 ## 👨‍💻 Contributors
 
