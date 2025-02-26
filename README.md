@@ -44,7 +44,7 @@ A hybrid fraud detection system that analyzes URLs and QR codes to identify pote
 
 4.  **Start the Frontend**
 
-    Open [text](main.html) in a browser or use Live Server (VS Code).
+    Open `index.html` in a browser or use Live Server (VS Code).
 
 ## 📌 API Endpoints
 
