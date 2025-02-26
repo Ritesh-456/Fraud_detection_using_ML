@@ -44,6 +44,15 @@
                     <p>Click to upload QR code</p>
                     <input type="file" id="qr-input" hidden accept="image/*" onchange="analyzeQR(this)">
                 </div>
+
+                <!-- QR Code Display Section -->
+                <div id="qr-image-container" class="qr-image-container" style="display: none;">
+                    <img id="qr-image" alt="Uploaded QR Code" style="max-width: 100%; max-height: 300px;"/>
+                </div>
+
+                <!-- QR Analysis Button -->
+                <button class="button" onclick="clearQR()">Clear QR Code</button>
+
                 <div id="qr-result" class="result-card"></div>
             </div>
 
@@ -58,3 +67,5 @@
 </body>
 
 </html>
+
+
