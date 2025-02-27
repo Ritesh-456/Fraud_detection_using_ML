@@ -3,6 +3,7 @@ from PIL import Image
 from flask import Flask, request, jsonify
 from flask_cors import CORS  
 from Notebook.fraud_detection_model_ import HybridFraudDetector
+import pyzbar.pyzbar
 
 app = Flask(__name__)
 
@@ -34,26 +35,19 @@ def analyze_url():
 @app.route('/analyze-qr', methods=['POST'])
 def analyze_qr():
     try:
+        print(pyzbar.pyzbar) 
         if 'file' not in request.files:
             return jsonify({'error': 'No file part'}), 400
         file = request.files['file']
-        if file.filename == '':
-            return jsonify({'error': 'No selected file'}), 400
-
         img = Image.open(file)
-        qr_code = pyzbar.pyzbar.decode(img)
-
-        if not qr_code:
+        qr_codes = pyzbar.pyzbar.decode(img)
+        if not qr_codes:
             return jsonify({'error': 'No QR code found'}), 400
-
-        url = qr_code[0].data.decode('utf-8')
-
+        url = qr_codes[0].data.decode('utf-8')
         result = detector.analyze_url(url)
         return jsonify(result)
-
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
 
 if __name__ == '__main__':
     detector.train_model()
