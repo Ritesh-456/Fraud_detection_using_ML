@@ -186,3 +186,4 @@ if __name__ == "__main__":
             result = detector.analyze_url(url)
             if result:
                 print(result)
+                
