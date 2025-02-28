@@ -112,6 +112,9 @@ Upload an image containing a QR code
   "risk_level": "Low"
 }
 ```
+## Screenshhot
+
+![alt text](images/image.png)
 
 ## 👨‍💻 Contributors
 
