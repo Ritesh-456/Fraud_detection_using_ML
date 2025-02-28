@@ -35,7 +35,7 @@
                         <h4>Risk Factors:</h4>
                         <ul class="risk-factors" id="risk-factors-list"></ul>
                     </div>
-                </div>                
+                </div>
             </div>
 
             <div class="card">
@@ -47,12 +47,11 @@
 
                 <!-- QR Code Display Section -->
                 <div id="qr-image-container" class="qr-image-container" style="display: none;">
-                    <img id="qr-image" alt="Uploaded QR Code" style="max-width: 100%; max-height: 300px;"/>
+                    <img id="qr-image" alt="Uploaded QR Code" style="max-width: 100%; max-height: 300px;" />
                 </div>
 
                 <!-- QR Analysis Button -->
-                <button class="button" onclick="clearQR()">Clear QR Code</button>
-
+                <button class="button" onclick="clearQR()" id="clearQR" disabled>Clear QR Code</button>
                 <div id="qr-result" class="result-card"></div>
             </div>
 
@@ -67,5 +66,3 @@
 </body>
 
 </html>
-
-

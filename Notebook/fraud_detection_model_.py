@@ -1,8 +1,3 @@
-from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
-from PIL import Image
 import io
 import qrcode
 import time
@@ -12,6 +7,12 @@ import pandas as pd
 import numpy as np
 import subprocess
 import sys
+from PIL import Image
+from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import train_test_split
+
 
 def install_requirements():
     packages = [
@@ -141,7 +142,7 @@ class HybridFraudDetector:
             elif confidence > 80:
                 risk_level = 'High'
             elif confidence > 50:
-                risk_level = 'Medium'
+                risk_level = 'Medium'   
             else:
                 risk_level = 'Low'
             risk_factors = []
@@ -186,4 +187,3 @@ if __name__ == "__main__":
             result = detector.analyze_url(url)
             if result:
                 print(result)
-                
