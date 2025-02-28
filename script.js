@@ -64,26 +64,26 @@ function analyzeQR(input) {
 
 function clearQR() {
     const qrImageContainer = document.getElementById('qr-image-container');
-    qrImageContainer.style.display = 'none'; // Hide the image container
+    qrImageContainer.style.display = 'none';
 
     const qrInput = document.getElementById('qr-input');
-    qrInput.value = ''; // Clear the file input
+    qrInput.value = ''; 
 
-    document.getElementById('qr-result').style.display = 'none'; // Hide analysis result if any
+    document.getElementById('qr-result').style.display = 'none'; 
 }
 
 function simulateQRAnalysis() {
-    const confidence = Math.random() * 100; // Randomly generate confidence between 0 and 100
+    const confidence = Math.random() * 100; 
     return {
-        is_fraud: confidence > 70, // If confidence is above 70%, mark as fraudulent
-        confidence: confidence.toFixed(2), // Round the confidence to 2 decimal places
-        risk_level: confidence > 80 ? 'High' : confidence > 50 ? 'Medium' : 'Low' // Assign risk level based on confidence
+        is_fraud: confidence > 70, 
+        confidence: confidence.toFixed(2), 
+        risk_level: confidence > 80 ? 'High' : confidence > 50 ? 'Medium' : 'Low' 
     };
 }
 
 function updateQRResult(result) {
     const resultCard = document.getElementById('qr-result');
-    resultCard.style.display = 'block'; // Ensure the result card is visible
+    resultCard.style.display = 'block'; 
 
     resultCard.className = `result-card ${result.is_fraud ? 'fraud' : 'safe'}`;
 
@@ -98,8 +98,8 @@ function updateQRResult(result) {
 
 function addToHistory(item, result) {
     const historyList = document.getElementById('history-list');
-    const listItem = document.createElement('li'); // Create a new list item for history
-    listItem.className = 'history-item'; // Add class for styling
+    const listItem = document.createElement('li'); 
+    listItem.className = 'history-item'; 
 
     const statusBadge = document.createElement('span');
     statusBadge.className = `status-badge ${result.isFreud ? 'fraud' : 'safe'}`;
