@@ -142,4 +142,3 @@ Upload an image containing a QR code
 - Ritesh Brahmachari  
 - Satyabrata Panigrahi  
 - Tanisha Dutta  
-
