@@ -71,16 +71,18 @@ To avoid DLL-related errors (e.g., when using `pyzbar` or `OpenCV`), please inst
 
 🔗 **Download Links:**
 
-* **Visual C++ 2008 Redistributable (x86):** [Download](https://download.microsoft.com/download/5/8/C/58C82555-F714-45F9-952D-E1129CC0D1C5/vcredist_x86.exe)
-* **Visual C++ 2008 Redistributable (x64):** [Download](https://download.microsoft.com/download/5/8/C/58C82555-F714-45F9-952D-E1129CC0D1C5/vcredist_x64.exe)
-* **Visual C++ 2010 Redistributable (x86):** [Download](https://download.microsoft.com/download/C/6/B/C6B0683D-D55B-4762-913F-CB2D99DABB95/vcredist_x86.exe)
-* **Visual C++ 2010 Redistributable (x64):** [Download](https://download.microsoft.com/download/C/6/B/C6B0683D-D55B-4762-913F-CB2D99DABB95/vcredist_x64.exe)
-* **Visual C++ 2012 Redistributable (x86):** [Download](https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF5-8E1F-9EC9985A16A7/vcredist_x86.exe)
-* **Visual C++ 2012 Redistributable (x64):** [Download](https://download.microsoft.com/download/1/6/B/16B06F60-3B20-4FF5-8E1F-9EC9985A16A7/vcredist_x64.exe)
-* **Visual C++ 2013 Redistributable (x86):** [Download](https://download.microsoft.com/download/0/5/6/056DCF65-A22B-414D-88A5-E6189957CD6F/vcredist_x86.exe)
-* **Visual C++ 2013 Redistributable (x64):** [Download](https://download.microsoft.com/download/0/5/6/056DCF65-A22B-414D-88A5-E6189957CD6F/vcredist_x64.exe)
-* **Visual C++ 2015-2022 Redistributable (x86):** [Download](https://aka.ms/vs/17/release/vc_redist.x86.exe)
+* **Visual C++ 2008 Redistributable (x64/x86):** [Download](https://www.microsoft.com/en-us/download/details.aspx?id=26368)
+
+* **Visual C++ 2010 Redistributable (x64/x86):** [Download](https://www.microsoft.com/en-us/download/details.aspx?id=26999)
+
+* **Visual C++ 2012 Redistributable (x64/x86):** [Download](https://www.microsoft.com/en-in/download/details.aspx?id=30679)
+
+* **Visual C++ 2013 Redistributable (x64/x86):** [Download](https://www.microsoft.com/en-in/download/details.aspx?id=40784)
+
 * **Visual C++ 2015-2022 Redistributable (x64):** [Download](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+
+* **Visual C++ 2015-2022 Redistributable (x86):** [Download](https://aka.ms/vs/17/release/vc_redist.x86.exe)
+
 
 Make sure to install **both x86 and x64 versions** if you are running a 64-bit operating system.
 
