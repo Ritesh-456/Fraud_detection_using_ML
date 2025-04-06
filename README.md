@@ -65,7 +65,7 @@ cd fraud-detection
 pip install -r requirements.txt
 ```
 
-⚠️ **Important Prerequisite (for Windows Users)**
+### ⚠️ **Important Prerequisite (for Windows Users)**
 
 To avoid DLL-related errors (e.g., when using `pyzbar` or `OpenCV`), please install the Microsoft Visual C++ Redistributable packages from 2008 to 2015.
 
