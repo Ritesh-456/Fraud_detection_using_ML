@@ -8,7 +8,7 @@ import pyzbar.pyzbar
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from Notebook.fraud_detection_model_ import HybridFraudDetector
-from helpers.db.handler import save_url_result
+from helpers.db import handler as db_handler 
 
 
 from feature_extraction import extract_features
