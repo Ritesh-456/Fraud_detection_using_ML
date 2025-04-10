@@ -1,9 +1,17 @@
 import io
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from PIL import Image
+import pyzbar.pyzbar
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from Notebook.fraud_detection_model_ import HybridFraudDetector
-import pyzbar.pyzbar
+from helpers.db.handler import save_url_result
+
+
+from feature_extraction import extract_features
 import qrcode
 import base64
 
