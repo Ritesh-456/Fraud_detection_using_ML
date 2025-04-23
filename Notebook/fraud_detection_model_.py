@@ -14,28 +14,28 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 
 
-def install_requirements():
-    packages = [
-        'qrcode',
-        'opencv-python',
-        'pillow',
-        'scikit-learn',
-        'pandas',
-        'numpy'
-    ]
-    for package in packages:
-        try:
-            print(f"Installing {package}...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-        except subprocess.CalledProcessError as e:
-            print(f"Error installing {package}: {e}")
-            return False
-    return True
+# def install_requirements():
+#     packages = [
+#         'qrcode',
+#         'opencv-python',
+#         'pillow',
+#         'scikit-learn',
+#         'pandas',
+#         'numpy'
+#     ]
+#     for package in packages:
+#         try:
+#             print(f"Installing {package}...")
+#             subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+#         except subprocess.CalledProcessError as e:
+#             print(f"Error installing {package}: {e}")
+#             return False
+#     return True
 
-if not install_requirements():
-    print("Error installing dependencies. Please install manually using:")
-    print("pip install qrcode opencv-python pillow scikit-learn pandas numpy")
-    sys.exit(1)
+# if not install_requirements():
+#     print("Error installing dependencies. Please install manually using:")
+#     print("pip install qrcode opencv-python pillow scikit-learn pandas numpy")
+#     sys.exit(1)
 
 try:
     import cv2
