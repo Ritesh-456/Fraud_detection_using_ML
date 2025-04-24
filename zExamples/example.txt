@@ -10,3 +10,24 @@ test_urls = [
     "https://banking-alert-service.ml/update",       # fake alert
     "http://netflix-payment-issue.xyz/fix",          # fake Netflix phishing
 ]
+
+# name = hello
+# login email = boyy1221@gmail.com
+# password = 1234512345
+# app.config['SECRET_KEY'] = 'a25c29160c03ba0aae322a3b20ce454d44276466c3cf4b30'
+
+# run appy.py in cmd for flask backend - .venv\Scripts\python "d:\Projects\Fraud Detection using ML\Fraud_detection_using_ML\Python scripts\app.py"
+
+
+# to run mysql in command line
+
+# mysql -u your_mysql_username -p
+# enter password = ****
+# SOURCE D:/Projects/Fraud Detection using ML/Fraud_detection_using_ML/database/schema.sql;
+
+# to get into your db = USE fraud_detection_db;
+
+#SELECT id, email, username FROM users;
+
+#DELETE FROM users WHERE id = your_user_id;
+#DELETE FROM users WHERE email = 'user_email@example.com';

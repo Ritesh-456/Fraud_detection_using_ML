@@ -1,8 +1,23 @@
+/* Add this rule or modify the existing one if you put it elsewhere */
+#auth-forms {
+    display: flex; /* Make it a flex container */
+    gap: 10px;      /* Add space between the flex items (the buttons) */
+    align-items: center; /* Vertically center the buttons */
+}
+
+/* Rest of your existing style.css code below this */
+
 :root {
     --primary-color: #2563eb;
     --danger-color: #dc2626;
-    --success-color: #16a34a;
-    --warning-color: #d97706;
+    --success-color: #16a34a; /* Light mode safe color (green) */
+    --warning-color: #d97706; /* Light mode warning color (orange/yellow) */
+    --text-color: #374151;
+    --text-light: #6b7280;
+    --border-color: #d1d5db;
+    --background-color: #f3f4f6;
+    --card-background: #ffffff;
+    --shadow-color: rgba(0, 0, 0, 0.1);
 }
 
 * {
@@ -13,9 +28,24 @@
 }
 
 body {
-    background-color: #f3f4f6;
+    background-color: var(--background-color);
     min-height: 100vh;
     padding: 2rem;
+    color: var(--text-color); /* Default text color for body */
+}
+
+/* Dark Mode Colors - Update this block in your style.css */
+body.dark-mode {
+    --primary-color: #60a5fa; /* Lighter blue for dark background */
+    --danger-color: #f87171; /* Lighter red */
+    --success-color: #4ade80; /* Dark mode safe color (green) */
+    --warning-color: #f59e0b; /* Warm amber/yellow for warning variable in dark mode (used for border/badge text) */
+    --text-color: #d1d5db; /* Light gray text for general use in dark mode */
+    --text-light: #9ca3af; /* Slightly darker light gray text */
+    --border-color: #4b5563; /* Darker border */
+    --background-color: #1f2937; /* Dark background */
+    --card-background: #374151; /* Darker card background */
+    --shadow-color: rgba(0, 0, 0, 0.3); /* Slightly more opaque shadow */
 }
 
 .container {
@@ -26,21 +56,185 @@ body {
 .header {
     text-align: center;
     margin-bottom: 2rem;
-    padding: 1rem;
-    background: white;
+    padding: 1.5rem;
+    background: var(--card-background); /* Uses card background variable */
     border-radius: 10px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 4px 6px var(--shadow-color); /* Uses shadow color variable */
+    position: relative;
 }
 
 .header h1 {
-    color: var(--primary-color);
+    color: var(--primary-color); /* Uses primary color variable */
     margin-bottom: 0.5rem;
+    font-size: 2rem;
 }
 
 .header p {
-    color: #666;
+    color: var(--text-light); /* Uses text-light variable */
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
 }
 
+/* Auth Section Styles */
+.auth-section {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 10px; /* Space between user status and auth forms div */
+}
+
+#user-status {
+    font-size: 1rem;
+    color: var(--text-color); /* Uses the main text color variable */
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* Changed ID here to user-identifier */
+#user-identifier {
+    font-weight: bold;
+    color: var(--primary-color); /* Uses the primary color variable */
+}
+
+.button-small {
+    background: var(--primary-color);
+    color: white;
+    padding: 0.4rem 0.8rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background-color 0.2s ease;
+    margin-top: 0;
+    display: inline-block;
+}
+
+.button-small:hover {
+    background-color: #1d4ed8; /* Light mode specific hover */
+}
+
+/* Dark mode hover for primary button */
+body.dark-mode .button-small:hover {
+     background-color: #3b82f6; /* Slightly lighter blue for dark mode hover */
+}
+
+
+/* Auth Card Styles (Login/Register Forms) */
+.auth-card {
+    max-width: 400px;
+    margin: 2rem auto;
+    padding: 2rem;
+    background: var(--card-background); /* Uses card background variable */
+    border-radius: 10px;
+    box-shadow: 0 2px 4px var(--shadow-color); /* Uses shadow color variable */
+}
+
+.auth-card h2 {
+    text-align: center;
+    margin-bottom: 1.5rem;
+    color: var(--primary-color); /* Uses primary color variable */
+}
+
+.input-group {
+    margin-bottom: 1.2rem;
+}
+
+.input-group label {
+    display: block;
+    margin-bottom: 0.6rem;
+    color: var(--text-color); /* Uses the main text color variable */
+    font-weight: bold;
+}
+
+.input-group input {
+    width: 100%;
+    padding: 0.8rem;
+    border: 1px solid var(--border-color); /* Uses border color variable */
+    border-radius: 6px;
+    font-size: 1rem;
+    color: var(--text-color); /* Uses the main text color variable */
+    background-color: var(--card-background); /* Uses card background variable */
+}
+
+.input-group input:focus {
+    outline: none;
+    border-color: var(--primary-color); /* Uses primary color variable */
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); /* Specific focus shadow */
+}
+/* Dark mode focus shadow */
+body.dark-mode .input-group input:focus {
+    box-shadow: 0 0 0 3px rgba(96, 165, 250, 0.2); /* Adjust shadow color for dark mode primary */
+}
+
+
+.button {
+    display: block;
+    width: 100%;
+    background: var(--primary-color); /* Uses primary color variable */
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background-color 0.2s ease, opacity 0.2s ease;
+    margin-top: 1.5rem;
+}
+
+button:hover:not(:disabled) {
+    background-color: #1d4ed8; /* Specific hover color for light mode primary */
+}
+
+/* Dark mode hover for primary button */
+body.dark-mode button:hover:not(:disabled) {
+     background-color: #3b82f6; /* Slightly lighter blue for dark mode hover */
+}
+
+
+button:disabled {
+    background-color: #9ca3af;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+/* Dark mode disabled button */
+body.dark-mode button:disabled {
+     background-color: #4b5563; /* Uses darker color for disabled in dark mode */
+}
+
+
+.toggle-form {
+    text-align: center;
+    margin-top: 1rem;
+    color: var(--text-light); /* Uses text-light variable */
+}
+
+.toggle-form span {
+    color: var(--primary-color); /* Uses primary color variable */
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.toggle-form span:hover {
+    text-decoration: none;
+}
+
+
+/* --- Global Link Color in Dark Mode --- */
+/* Applies to all links unless overridden by a more specific rule */
+body.dark-mode a {
+    color: var(--primary-color); /* Set link color to primary color in dark mode */
+    text-decoration: underline; /* Keep underline for clarity */
+}
+body.dark-mode a:hover {
+     text-decoration: none; /* Remove underline on hover */
+}
+
+
+/* Main Content Grid */
 .main-content {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
@@ -49,55 +243,16 @@ body {
 }
 
 .card {
-    background: white;
+    background: var(--card-background); /* Uses card background variable */
     padding: 1.5rem;
     border-radius: 10px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 2px 4px var(--shadow-color); /* Uses shadow color variable */
 }
 
 .card h2 {
-    color: var(--primary-color);
+    color: var(--primary-color); /* Uses primary color variable */
     margin-bottom: 1rem;
     font-size: 1.25rem;
-}
-
-.input-group {
-    margin-bottom: 1rem;
-}
-
-.input-group label {
-    display: block;
-    margin-bottom: 0.5rem;
-    color: #374151;
-}
-
-.input-group input {
-    width: 100%;
-    padding: 0.75rem;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    font-size: 1rem;
-}
-
-.input-group input:focus {
-    outline: none;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-}
-
-.button {
-    background: var(--primary-color);
-    color: white;
-    padding: 0.75rem 1.5rem;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 1rem;
-    transition: background-color 0.2s;
-}
-
-.button:hover {
-    background-color: #1d4ed8;
 }
 
 .result-card {
@@ -105,22 +260,110 @@ body {
     padding: 1rem;
     border-radius: 6px;
     display: none;
+    font-size: 0.95rem;
+    /* Default text color for elements inside result cards - can be overridden by state styles */
+    color: var(--text-color); /* Default text color is light gray in dark mode */
 }
+
+/* Ensure text color is readable on colored result cards by inheriting */
+/* These rules ensure h3, p, and li within result cards inherit the color set on their parent .result-card.<state> rule */
+.result-card h3,
+.result-card p,
+.result-card .risk-factors li {
+    color: inherit;
+}
+/* Links within result cards will be handled separately below */
+
+
+/* --- Result Card State Styles --- */
 
 .result-card.fraud {
-    background-color: #fee2e2;
-    border: 1px solid var(--danger-color);
+    background-color: #fee2e2; /* Light theme fraud background */
+    border: 1px solid var(--danger-color); /* Uses danger color variable */
+    color: var(--danger-color); /* Text color for fraud in light mode */
 }
+/* Dark mode overrides for fraud result card */
+body.dark-mode .result-card.fraud {
+    background-color: #451a03; /* Darker background for fraud in dark mode (example) */
+    border-color: var(--danger-color); /* Uses danger color variable */
+    color: var(--danger-color); /* Use danger color for text in dark mode */
+}
+
 
 .result-card.safe {
-    background-color: #dcfce7;
-    border: 1px solid var(--success-color);
+    background-color: #dcfce7; /* Light theme safe background */
+    border: 1px solid var(--success-color); /* Uses success color variable */
+    color: var(--success-color); /* Text color for safe in light mode */
+}
+/* Dark mode overrides for safe result card */
+body.dark-mode .result-card.safe {
+    background-color: #16a34a33; /* Semi-transparent success green (example) */
+    border-color: var(--success-color); /* Uses success color variable */
+    color: var(--success-color); /* Use success color for text in dark mode */
 }
 
+
 .result-card.warning {
-    background-color: #fef3c7;
-    border: 1px solid var(--warning-color);
+    background-color: #fef3c7; /* Light theme warning background */
+    border: 1px solid var(--warning-color); /* Border color uses the variable */
+    color: var(--warning-color); /* Text color uses the variable */
 }
+/* Dark mode overrides for warning result card */
+body.dark-mode .result-card.warning {
+     background-color: var(--card-background); /* <-- Use DEFAULT card background */
+     border-color: var(--warning-color); /* <-- Use amber variable for border */
+     color: var(--text-color); /* <-- Use default light gray text color for p and li */
+}
+
+/* Specific text color for H3 inside warning result card in dark mode */
+body.dark-mode .result-card.warning h3 {
+     color: var(--primary-color); /* <-- Set H3 color to blue */
+}
+
+
+/* --- Status Badge State Styles --- */
+
+/* Status badge - light mode fraud background color */
+.status-badge.fraud {
+    background-color: #fee2e2;
+    border: 1px solid var(--danger-color); /* Uses danger color variable */
+    color: var(--danger-color); /* Text color */
+}
+/* Status badge - dark mode fraud background color */
+body.dark-mode .status-badge.fraud {
+    background-color: #ef444433; /* Semi-transparent danger red (example) */
+    border-color: var(--danger-color); /* Use danger color variable */
+    color: var(--danger-color); /* Keep color variable */
+}
+
+
+/* Status badge - light mode safe background color */
+.status-badge.safe {
+    background-color: #dcfce7;
+    border: 1px solid var(--success-color); /* Uses success color variable */
+    color: var(--success-color); /* Text color */
+}
+/* Status badge - dark mode safe background color */
+body.dark-mode .status-badge.safe {
+    background-color: #22c55e33; /* Semi-transparent success green (example) */
+    border-color: var(--success-color); /* Use success color variable */
+    color: var(--success-color); /* Keep color variable */
+}
+
+
+/* Status badge - light mode warning background color */
+.status-badge.warning {
+     background-color: #fef3c7;
+     border: 1px solid var(--warning-color); /* Border color uses the variable */
+     color: var(--warning-color); /* Text color uses the variable */
+}
+/* Warning badge - dark mode background color */
+body.dark-mode .status-badge.warning {
+     background-color: #f59e0b33; /* Semi-transparent amber (example) */
+     border-color: var(--warning-color); /* Use the new warning color for border */
+     color: var(--warning-color); /* Keep color variable */
+}
+
 
 .result-details {
     margin-top: 1rem;
@@ -129,81 +372,170 @@ body {
 .risk-factors {
     margin-top: 0.5rem;
     padding-left: 1.5rem;
+    color: var(--text-light); /* Uses text-light variable */
 }
 
+/* Ensure list item color is readable on colored result backgrounds */
+/* List items inside result cards inherit the color set on their parent .result-card.<state> rule */
+.result-card.fraud .risk-factors li,
+.result-card.warning .risk-factors li {
+      color: inherit;
+}
+
+
+/* Confidence bar track */
 .confidence-bar {
     margin-top: 0.5rem;
-    height: 8px;
-    background-color: #e5e7eb;
-    border-radius: 4px;
+    height: 10px;
+    background-color: #e5e7eb; /* Light gray in light mode */
+    border-radius: 5px;
     overflow: hidden;
 }
+/* Dark mode override for confidence bar track */
+body.dark-mode .confidence-bar {
+    background-color: #4b5563; /* Darker gray in dark mode */
+}
+
 
 .confidence-bar-fill {
     height: 100%;
-    background-color: var(--primary-color);
+    background-color: var(--primary-color); /* Uses primary color for fill */
     transition: width 0.3s ease;
 }
 
 .qr-upload-area {
-    border: 2px dashed #d1d5db;
+    border: 2px dashed var(--border-color); /* Uses border color variable */
     padding: 2rem;
     text-align: center;
     border-radius: 6px;
     cursor: pointer;
-    transition: border-color 0.2s;
+    transition: border-color 0.2s ease;
+    color: var(--text-light); /* Uses text-light variable */
 }
 
 .qr-upload-area:hover {
-    border-color: var(--primary-color);
+    border-color: var(--primary-color); /* Uses primary color variable */
+    color: var(--primary-color); /* Uses primary color variable */
 }
 
 .qr-image-container {
     margin-top: 1rem;
     text-align: center;
+    border: 1px solid var(--border-color); /* Uses border color variable */
+    padding: 1rem;
+    border-radius: 6px;
+    background-color: var(--card-background); /* Use card background variable */
 }
 
 .qr-image-container img {
     max-width: 100%;
     max-height: 300px;
+    display: block;
+    margin: 0 auto;
 }
 
-.button {
-    background: var(--primary-color);
+
+/* Adjusted button styles for clarity */
+button {
+    background: var(--primary-color); /* Uses primary color variable */
     color: white;
     padding: 0.75rem 1.5rem;
     border: none;
     border-radius: 6px;
     cursor: pointer;
     font-size: 1rem;
-    transition: background-color 0.2s;
-    margin-top: 1rem;
+    transition: background-color 0.2s ease, opacity 0.2s ease;
 }
 
-.button:hover {
-    background-color: #1d4ed8;
+button:hover:not(:disabled) {
+    background-color: #1d4ed8; /* Specific hover color for light mode primary */
 }
+
+/* Dark mode hover for primary button */
+body.dark-mode button:hover:not(:disabled) {
+     background-color: #3b82f6; /* Slightly lighter blue for dark mode hover */
+}
+
+
+button:disabled {
+    background-color: #9ca3af;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+/* Dark mode disabled button */
+body.dark-mode button:disabled {
+     background-color: #4b5563; /* Uses darker color for disabled in dark mode */
+}
+
+
+.toggle-form {
+    text-align: center;
+    margin-top: 1rem;
+    color: var(--text-light); /* Uses text-light variable */
+}
+
+.toggle-form span {
+    color: var(--primary-color); /* Uses primary color variable */
+    cursor: pointer;
+    text-decoration: underline;
+}
+
+.toggle-form span:hover {
+    text-decoration: none;
+}
+
+
+/* .delete-history-item {
+    background: none;
+    border: none;
+    color: var(--text-light);
+    font-size: 1rem;
+    cursor: pointer;
+    margin-left: 10px;
+    transition: color 0.2s ease, transform 0.2s ease;
+    padding: 0;
+}
+
+.delete-history-item:hover {
+    color: var(--danger-color); 
+    transform: scale(1.2);
+} */
 
 .history-list {
     list-style: none;
+    padding: 0;
+    margin-top: 1rem;
 }
 
 .history-item {
-    padding: 0.45rem;
+    padding: 0.75rem;
     border-bottom: 1px solid #e5e7eb;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    font-size: 0.9rem;
+    color: var(--text-color);
+    word-break: break-word;
 }
 
 .history-item:last-child {
     border-bottom: none;
 }
 
+.history-item span:first-child {
+    flex-grow: 1;
+    margin-right: 10px;
+}
+
+
 .status-badge {
     padding: 0.25rem 0.75rem;
     border-radius: 9999px;
-    font-size: 0.875rem;
+    font-size: 0.8rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    white-space: nowrap;
 }
 
 .status-badge.fraud {
@@ -216,8 +548,55 @@ body {
     color: var(--success-color);
 }
 
+/* Clear History Button Style */
+.card .button {
+      margin-top: 1.5rem;
+      width: auto;
+      display: inline-block;
+}
+
+.delete-history-item {
+    background: none;
+    border: none;
+    color: var(--text-light);
+    font-size: 1rem;
+    cursor: pointer;
+    margin-left: 10px;
+    transition: color 0.2s ease, transform 0.2s ease;
+    padding: 0;
+}
+
+.delete-history-item:hover {
+    color: var(--danger-color);
+    transform: scale(1.2);
+}
+
+
 @media (max-width: 768px) {
+    body {
+        padding: 1rem;
+    }
     .main-content {
         grid-template-columns: 1fr;
+        gap: 1rem;
     }
+    .header {
+        padding: 1rem;
+    }
+    .header h1 {
+        font-size: 1.5rem;
+    }
+    .header p {
+        font-size: 1rem;
+    }
+      .auth-section {
+        position: static;
+        justify-content: center;
+        margin-top: 1rem;
+    }
+      /* Ensure buttons stack nicely on small screens if needed, though flex gap should work */
+       #auth-forms {
+          /* flex-direction: column; */ /* Uncomment this if you want buttons to stack */
+           gap: 10px; /* Keep gap */
+       }
 }

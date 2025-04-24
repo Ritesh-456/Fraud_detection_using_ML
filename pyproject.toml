@@ -7,11 +7,24 @@ requires-python = ">=3.11"
 dependencies = [
     "flask>=3.1.0",
     "flask-cors>=5.0.1",
+    "flask-login>=0.6.3",
+    "mysql-connector-python>=9.3.0",
     "numpy>=2.2.5",
-    "opencv-python>=4.11.0.86",
+    "opencv-python>=4.11.0.86", # Make sure you have the correct version/package installed
     "pandas>=2.2.3",
     "pillow>=11.2.1",
     "pyzbar>=0.1.9",
     "qrcode>=8.1",
     "scikit-learn>=1.6.1",
+    "Werkzeug>=3.0.0", # Added Werkzeug explicitly as it's used for hashing
 ]
+
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
+[tool.pdm]
+distribution = true
+
+[tool.pdm.dev-dependencies]
+dev = []

@@ -14,29 +14,6 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 
 
-# def install_requirements():
-#     packages = [
-#         'qrcode',
-#         'opencv-python',
-#         'pillow',
-#         'scikit-learn',
-#         'pandas',
-#         'numpy'
-#     ]
-#     for package in packages:
-#         try:
-#             print(f"Installing {package}...")
-#             subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-#         except subprocess.CalledProcessError as e:
-#             print(f"Error installing {package}: {e}")
-#             return False
-#     return True
-
-# if not install_requirements():
-#     print("Error installing dependencies. Please install manually using:")
-#     print("pip install qrcode opencv-python pillow scikit-learn pandas numpy")
-#     sys.exit(1)
-
 try:
     import cv2
 except ImportError:
@@ -101,7 +78,7 @@ class HybridFraudDetector:
 
     def _generate_random_path(self):
         return ''.join(np.random.choice(list('abcdefghijklmnopqrstuvwxyz0123456789'))
-                       for _ in range(np.random.randint(5, 20)))
+                         for _ in range(np.random.randint(5, 20)))
 
     def train_model(self, n_samples=1000):
         try:
@@ -142,7 +119,7 @@ class HybridFraudDetector:
             elif confidence > 80:
                 risk_level = 'High'
             elif confidence > 50:
-                risk_level = 'Medium'   
+                risk_level = 'Medium'
             else:
                 risk_level = 'Low'
             risk_factors = []

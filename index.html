@@ -13,9 +13,57 @@
         <header class="header">
             <h1>Fraud Detection System</h1>
             <p>Analyze URLs and QR codes for potential fraud</p>
+            <div id="auth-section" class="auth-section">
+                <button class="button-small" id="mode-toggle">Toggle Mode</button>
+        
+                <div id="user-status" style="display: none;">
+                    Welcome, <strong id="user-identifier"></strong>! <button class="button-small" onclick="logout()">Logout</button>
+                </div>
+                <div id="auth-forms">
+                    <button class="button-small" id="show-login">Login</button>
+                    <button class="button-small" id="show-register">Register</button>
+                </div>
+            </div>
         </header>
 
-        <main class="main-content">
+        <div id="login-form" class="card auth-card" style="display: none;">
+            <h2>Login</h2>
+            <div class="input-group">
+                <label for="login-email">Email:</label>
+                <input type="email" id="login-email" placeholder="Enter your email" required>
+            </div>
+            <div class="input-group">
+                <label for="login-password">Password:</label>
+                <input type="password" id="login-password" placeholder="Enter your password" required>
+            </div>
+            <button class="button" onclick="login()">Login</button>
+            <p class="toggle-form">Don't have an account? <span onclick="showRegisterForm()">Register here</span></p>
+        </div>
+
+        <div id="register-form" class="card auth-card" style="display: none;">
+            <h2>Register</h2>
+            <div class="input-group">
+                <label for="register-email">Email:</label>
+                <input type="email" id="register-email" placeholder="Enter your email" required>
+            </div>
+            <div class="input-group">
+                <label for="register-username">Username:</label>
+                <input type="text" id="register-username" placeholder="Choose a username" required>
+            </div>
+            <div class="input-group">
+                <label for="register-password">Password:</label>
+                <input type="password" id="register-password" placeholder="Choose a password" required>
+            </div>
+            <div class="input-group">
+                <label for="confirm-password">Confirm Password:</label>
+                <input type="password" id="confirm-password" placeholder="Confirm your password" required>
+            </div>
+            <button class="button" onclick="register()">Register</button>
+            <p class="toggle-form">Already have an account? <span onclick="showLoginForm()">Login here</span></p>
+        </div>
+
+
+        <main id="main-app-content" class="main-content" style="display: none;">
             <div class="card">
                 <h2>URL Analysis</h2>
                 <div class="input-group">
@@ -45,19 +93,19 @@
                     <input type="file" id="qr-input" hidden accept="image/*" onchange="analyzeQR(this)">
                 </div>
 
-                <!-- QR Code Display Section -->
                 <div id="qr-image-container" class="qr-image-container" style="display: none;">
                     <img id="qr-image" alt="Uploaded QR Code" style="max-width: 100%; max-height: 300px;" />
                 </div>
 
-                <!-- QR Analysis Button -->
                 <button class="button" onclick="clearQR()" id="clearQR" disabled>Clear QR Code</button>
                 <div id="qr-result" class="result-card"></div>
             </div>
 
             <div class="card">
                 <h2>Analysis History</h2>
-                <ul class="history-list" id="history-list"></ul>
+                <ul class="history-list" id="history-list">
+                    </ul>
+                <button class="button" id="clear-history-button" onclick="clearHistory()">Clear History</button>
             </div>
         </main>
     </div>
