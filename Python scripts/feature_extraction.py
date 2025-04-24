@@ -1,5 +1,3 @@
-print("\n\n\n\nDEBUG: feature_extraction module is on the way...")
-
 import re
 import urllib.parse
 from collections import Counter
