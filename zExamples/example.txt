@@ -11,8 +11,8 @@ test_urls = [
     "http://netflix-payment-issue.xyz/fix",          # fake Netflix phishing
 ]
 
-# name = hello
-# login email = boyy1221@gmail.com
+# username = honeyboy
+# login email = test@gmail.com
 # password = 1234512345
 # app.config['SECRET_KEY'] = 'a25c29160c03ba0aae322a3b20ce454d44276466c3cf4b30'
 

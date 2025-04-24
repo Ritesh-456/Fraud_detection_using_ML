@@ -284,7 +284,7 @@ body.dark-mode a:hover {
 }
 /* Dark mode overrides for fraud result card */
 body.dark-mode .result-card.fraud {
-    background-color: #451a03; /* Darker background for fraud in dark mode (example) */
+    /* background-color: #451a03; Darker background for fraud in dark mode (example) */
     border-color: var(--danger-color); /* Uses danger color variable */
     color: var(--danger-color); /* Use danger color for text in dark mode */
 }

@@ -13,6 +13,7 @@ dependencies = [
     "opencv-python>=4.11.0.86", # Make sure you have the correct version/package installed
     "pandas>=2.2.3",
     "pillow>=11.2.1",
+    "python-dotenv>=1.1.0",
     "pyzbar>=0.1.9",
     "qrcode>=8.1",
     "scikit-learn>=1.6.1",
