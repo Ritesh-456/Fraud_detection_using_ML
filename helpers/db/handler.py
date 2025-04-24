@@ -5,49 +5,23 @@ from mysql.connector import Error
 import json
 import time # Added for example usage
 import sys # Import sys for printing to stderr
-import os # Import os to access environment variables
-
-# Import load_dotenv if you want to test handler.py standalone
-# If app.py already calls load_dotenv, it's not strictly needed here for the app to run,
-# but uncommenting it here allows you to run this file directly for testing database connection.
-# from dotenv import load_dotenv
-# Determine the path to the project root from the location of handler.py
-# handler.py is in 'Python scripts/helpers/db'. Project root is three directories up.
-# current_script_dir = os.path.dirname(os.path.abspath(__file__))
-# project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_script_dir)))
-# dotenv_path = os.path.join(project_root, '.env')
-# if os.path.exists(dotenv_path):
-#     load_dotenv(dotenv_path)
-# else:
-#     # This warning will show if .env isn't found when running handler.py directly
-#     print(f"Warning: .env file not found at {dotenv_path}. Database credentials must be set in the environment.", file=sys.stderr)
 
 
-# --- Database Connection Details (READ FROM ENVIRONMENT VARIABLES) ---
-# Read from environment variables, providing defaults if not set
-DB_HOST = os.getenv("DB_HOST", "127.0.0.1") # Default to 127.0.0.1 if not set in .env
-DB_PORT = os.getenv("DB_PORT", "3306") # Default to 3306 if not set in .env
-DB_USER = os.getenv("DB_USER") # <--- Read MySQL username from environment
-DB_PASSWORD = os.getenv("DB_PASSWORD") # <--- Read MySQL password from environment
-DB_NAME = os.getenv("DB_NAME") # <--- Read MySQL database name from environment
+# --- Database Connection Details (REPLACE WITH YOUR ACTUAL MYSQL CREDENTIALS) ---
+DB_HOST = "127.0.0.1" # Usually this is correct for local MySQL
+DB_PORT = "3306" # Default MySQL port - confirm yours if different
+DB_USER = "root" # <--- !!! REPLACE THIS with your REAL MySQL username !!!
+DB_PASSWORD = "1234qwer!@#$QWER" # <--- !!! REPLACE THIS with your REAL MySQL password !!!
+DB_NAME = "fraud_detection_db" # Should match the database name you created
 
 
 def create_db_connection():
     """Creates and returns a database connection."""
-    # Add checks to ensure DB variables are set from environment (via .env or system)
-    if not DB_USER or not DB_PASSWORD or not DB_NAME:
-        print("Error: Database credentials (DB_USER, DB_PASSWORD, DB_NAME) are not set in environment variables.", file=sys.stderr)
-        print("Please set them in your .env file or system environment.", file=sys.stderr)
-        return None
-
     connection = None
     try:
-        # Convert port to int as required by mysql.connector if it's not None
-        db_port_int = int(DB_PORT) if DB_PORT is not None else 3306
-
         connection = mysql.connector.connect(
             host=DB_HOST,
-            port=db_port_int,
+            port=DB_PORT,
             user=DB_USER,
             password=DB_PASSWORD,
             database=DB_NAME
@@ -56,21 +30,14 @@ def create_db_connection():
             # print("Database connection successful", file=sys.stderr) # Optional: uncomment for testing
             pass # Keep silent unless error
         return connection
-    except ValueError:
-        print(f"Error: Invalid DB_PORT value '{DB_PORT}'. Must be an integer.", file=sys.stderr)
-        return None
     except Error as e:
         print(f"Error connecting to MySQL Database '{DB_NAME}' for user '{DB_USER}': {e}", file=sys.stderr)
         # Consider adding more specific error handling or logging here
         return None
-    except Exception as e:
-         print(f"An unexpected error occurred during database connection: {e}", file=sys.stderr)
-         return None
-
 
 # --- Database Operations ---
 
-# create_user function - takes email, username, password_hash
+# Corrected and consolidated create_user function - takes email, username, password_hash
 def create_user(email, username, password_hash):
     """Inserts a new user into the users table."""
     connection = create_db_connection()
@@ -99,10 +66,6 @@ def create_user(email, username, password_hash):
         print(f"[DB] Error creating user: {e}", file=sys.stderr)
         connection.rollback()
         return None
-    except Exception as e:
-        print(f"[DB] An unexpected error occurred during user creation: {e}", file=sys.stderr)
-        connection.rollback()
-        return None
     finally:
         if cursor:
             cursor.close()
@@ -110,7 +73,7 @@ def create_user(email, username, password_hash):
             connection.close()
 
 
-# find_user_by_email function - Selects id, email, username, and password_hash
+# Corrected find_user_by_email function - Selects email, username, and password_hash
 def find_user_by_email(email):
     """Finds a user by email and returns their ID, email, username, and password hash."""
     connection = create_db_connection()
@@ -119,7 +82,7 @@ def find_user_by_email(email):
 
     cursor = None
     user = None
-    # SELECTS id, email, username, and password_hash
+    # CORRECTED QUERY: SELECTS id, email, username, and password_hash
     query = "SELECT id, email, username, password_hash FROM users WHERE email = %s"
 
     try:
@@ -132,9 +95,6 @@ def find_user_by_email(email):
     except Error as e:
         print(f"[DB] Error finding user by email: {e}", file=sys.stderr)
         return None
-    except Exception as e:
-        print(f"[DB] An unexpected error occurred finding user by email: {e}", file=sys.stderr)
-        return None
     finally:
         if cursor:
             cursor.close()
@@ -142,7 +102,7 @@ def find_user_by_email(email):
             connection.close()
 
 
-# find_user_by_id function - Selects id, email, and username
+# Corrected find_user_by_id function - Selects id, email, and username
 def find_user_by_id(user_id):
     """Finds a user by ID and returns their details (id, email, username)."""
     connection = create_db_connection()
@@ -155,7 +115,7 @@ def find_user_by_id(user_id):
         user_id = int(user_id)
 
         cursor = connection.cursor(dictionary=True)
-        # SELECTS id, email, and username
+        # CORRECTED QUERY: SELECTS id, email, and username
         query = "SELECT id, email, username FROM users WHERE id = %s"
         cursor.execute(query, (user_id,))
         user = cursor.fetchone()
@@ -168,9 +128,6 @@ def find_user_by_id(user_id):
     except Error as e:
         print(f"[DB] Error finding user by ID: {e}", file=sys.stderr)
         return None
-    except Exception as e:
-        print(f"[DB] An unexpected error occurred finding user by ID: {e}", file=sys.stderr)
-        return None
     finally:
         if cursor:
             cursor.close()
@@ -178,7 +135,7 @@ def find_user_by_id(user_id):
             connection.close()
 
 
-# save_analysis_result function
+# save_analysis_result function (already correct)
 def save_analysis_result(user_id, item_type, item_data, analysis_result):
     """Saves an analysis result to the analysis_history table."""
     connection = create_db_connection()
@@ -208,17 +165,13 @@ def save_analysis_result(user_id, item_type, item_data, analysis_result):
         print(f"[DB] Error saving analysis result: {e}", file=sys.stderr)
         connection.rollback()
         return False
-    except Exception as e:
-        print(f"[DB] An unexpected error occurred saving analysis result: {e}", file=sys.stderr)
-        connection.rollback()
-        return False
     finally:
         if cursor:
             cursor.close()
         if connection and connection.is_connected():
             connection.close()
 
-# get_user_history function
+# get_user_history function (already correct)
 def get_user_history(user_id):
     """Fetches analysis history for a given user ID."""
     connection = create_db_connection()
@@ -252,16 +205,13 @@ def get_user_history(user_id):
     except Error as e:
         print(f"[DB] Error fetching user history: {e}", file=sys.stderr)
         return []
-    except Exception as e:
-        print(f"[DB] An unexpected error occurred fetching user history: {e}", file=sys.stderr)
-        return []
     finally:
         if cursor:
             cursor.close()
         if connection and connection.is_connected():
             connection.close()
 
-# delete_history_item function
+# delete_history_item function (already correct)
 def delete_history_item(item_id, user_id):
     """Deletes a specific history item, ensuring it belongs to the user."""
     connection = create_db_connection()
@@ -292,17 +242,13 @@ def delete_history_item(item_id, user_id):
         print(f"[DB] Error deleting history item: {e}", file=sys.stderr)
         connection.rollback()
         return False
-    except Exception as e:
-        print(f"[DB] An unexpected error occurred deleting history item: {e}", file=sys.stderr)
-        connection.rollback()
-        return False
     finally:
         if cursor:
             cursor.close()
         if connection and connection.is_connected():
             connection.close()
 
-# clear_user_history function
+# clear_user_history function (already correct)
 def clear_user_history(user_id):
     """Deletes all history items for a specific user."""
     connection = create_db_connection()
@@ -327,10 +273,6 @@ def clear_user_history(user_id):
         print(f"[DB] Error clearing user history: {e}", file=sys.stderr)
         connection.rollback()
         return False
-    except Exception as e:
-        print(f"[DB] An unexpected error occurred clearing user history: {e}", file=sys.stderr)
-        connection.rollback()
-        return False
     finally:
         if cursor:
             cursor.close()
@@ -338,7 +280,7 @@ def clear_user_history(user_id):
             connection.close()
 
 
-# --- Function to Get All Users ---
+# --- New Function to Get All Users ---
 def get_all_users():
     """Fetches all users (id, email, username) from the database."""
     connection = create_db_connection()
@@ -358,16 +300,13 @@ def get_all_users():
     except Error as e:
         print(f"[DB] Error fetching all users: {e}", file=sys.stderr)
         return []
-    except Exception as e:
-        print(f"[DB] An unexpected error occurred fetching all users: {e}", file=sys.stderr)
-        return []
     finally:
         if cursor:
             cursor.close()
         if connection and connection.is_connected():
             connection.close()
 
-# --- Function to Delete a User by ID ---
+# --- New Function to Delete a User by ID ---
 def delete_user_by_id(user_id):
     """Deletes a user by their ID."""
     connection = create_db_connection()
@@ -406,10 +345,6 @@ def delete_user_by_id(user_id):
         print(f"[DB] Error deleting user {user_id}: {e}", file=sys.stderr)
         connection.rollback()
         return False
-    except Exception as e:
-        print(f"[DB] An unexpected error occurred deleting user: {e}", file=sys.stderr)
-        connection.rollback()
-        return False
     finally:
         if cursor:
             cursor.close()
@@ -421,18 +356,7 @@ def delete_user_by_id(user_id):
 if __name__ == "__main__":
     print("Testing Database Handler (MySQL)...")
 
-    # If running handler.py standalone for testing, uncomment the load_dotenv call above
-    # and ensure your .env file is in the project root.
-
-    # Add checks before running tests to ensure DB variables are set
-    if not os.getenv("DB_USER") or not os.getenv("DB_PASSWORD") or not os.getenv("DB_NAME"):
-        print("Error: Database credentials are not set as environment variables.", file=sys.stderr)
-        print("Please set DB_USER, DB_PASSWORD, DB_NAME in your .env file.", file=sys.stderr)
-        # DB_HOST and DB_PORT have defaults, so checking user, password, name is sufficient
-        sys.exit(1) # Exit if DB credentials are missing
-
-
-    # --- Ensure your MySQL server is running and credentials in .env are correct! ---
+    # --- Ensure your MySQL server is running and credentials above are correct! ---
 
     # --- Test Connection ---
     print("\nAttempting simple database connection test...")
@@ -441,11 +365,30 @@ if __name__ == "__main__":
         print("Simple database connection test successful.")
         conn.close()
     else:
-        print("Simple database connection test failed. Please check your MySQL server and credentials in your .env file.")
+        print("Simple database connection test failed. Please check your MySQL server and credentials.")
         sys.exit(1) # Exit if connection fails
 
-    # --- Rest of your example usage tests ---
-    # --- UNCOMMENT sections as needed for testing ---
+
+    # --- Test Get All Users ---
+    print("\nAttempting to get all users...")
+    all_users = get_all_users()
+    if all_users is not None:
+        if all_users:
+            print("Fetched Users:")
+            for user in all_users:
+                print(f"ID: {user['id']}, Email: {user['email']}, Username: {user['username']}")
+        else:
+            print("No users found in the database.")
+    else:
+        print("Failed to fetch users due to a database error.")
+
+    # --- Example: Test Delete User (UNCOMMENT and REPLACE with a real user ID to test) ---
+    # print("\nAttempting to delete a user (example)...")
+    # user_id_to_delete = 99 # <--- REPLACE with an actual user ID from your database for testing!
+    # delete_success = delete_user_by_id(user_id_to_delete)
+    # print(f"User deletion successful: {delete_success}")
+
+    # --- Example: Test User Creation, Find, History, etc. (UNCOMMENT sections as needed) ---
     # Ensure Werkzeug is installed (uv add Werkzeug) if testing user creation/password hashing
     # try:
     #     from werkzeug.security import generate_password_hash, check_password_hash
@@ -509,8 +452,6 @@ if __name__ == "__main__":
     #      print("\nWerkzeug not installed. Skipping user creation/password hashing tests.")
     # except Error as e:
     #      print(f"\nAn error occurred during tests: {e}")
-    # except Exception as e:
-    #     print(f"\nAn unexpected error occurred during tests: {e}", file=sys.stderr)
 
 
     print("\nTesting complete.")
