@@ -3,65 +3,76 @@
 import mysql.connector
 from mysql.connector import Error
 import json
-import time # Added for example usage
-import sys # Import sys for printing to stderr
+import time
+import sys
+import os
+from dotenv import load_dotenv
 
+# Load environment variables from .env file
+load_dotenv()
 
-# --- Database Connection Details (REPLACE WITH YOUR ACTUAL MYSQL CREDENTIALS) ---
-DB_HOST = "127.0.0.1" # Usually this is correct for local MySQL
-DB_PORT = "3306" # Default MySQL port - confirm yours if different
-DB_USER = "root" # <--- !!! REPLACE THIS with your REAL MySQL username !!!
-DB_PASSWORD = "1234qwer!@#$QWER" # <--- !!! REPLACE THIS with your REAL MySQL password !!!
-DB_NAME = "fraud_detection_db" # Should match the database name you created
+# --- Database Connection Details (Loaded from .env) ---
+DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
+DB_PORT = os.getenv("DB_PORT", "3306")
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_NAME = os.getenv("DB_NAME")
 
 
 def create_db_connection():
     """Creates and returns a database connection."""
+    if not DB_USER or not DB_PASSWORD or not DB_NAME:
+        print("[DB] Error: Database credentials (DB_USER, DB_PASSWORD, DB_NAME) not set in environment variables.", file=sys.stderr)
+        return None
+
     connection = None
     try:
+        # Add explicit logging before attempting connection
+        # print(f"[DB] Attempting to connect to {DB_USER}@{DB_HOST}:{DB_PORT}/{DB_NAME}", file=sys.stderr)
         connection = mysql.connector.connect(
             host=DB_HOST,
             port=DB_PORT,
             user=DB_USER,
             password=DB_PASSWORD,
             database=DB_NAME
+            # --- REMOVED: Unsupported isolation_level parameter ---
+            #,isolation_level='READ COMMITTED'
+            # --- END REMOVED ---
         )
         if connection.is_connected():
-            # print("Database connection successful", file=sys.stderr) # Optional: uncomment for testing
-            pass # Keep silent unless error
+            # print("Database connection successful", file=sys.stderr)
+            # --- REMOVED: Verify isolation level log ---
+            # print(f"[DB] Connection Isolation Level: {connection.get_transaction_isolation()}", file=sys.stderr)
+            # --- END REMOVED ---
+            pass
         return connection
     except Error as e:
-        print(f"Error connecting to MySQL Database '{DB_NAME}' for user '{DB_USER}': {e}", file=sys.stderr)
-        # Consider adding more specific error handling or logging here
+        print(f"[DB] Error connecting to MySQL Database '{DB_NAME}' for user '{DB_USER}': {e}", file=sys.stderr)
         return None
 
-# --- Database Operations ---
+# --- Database Operations (Functions defined before __main__ block) ---
 
-# Corrected and consolidated create_user function - takes email, username, password_hash
 def create_user(email, username, password_hash):
     """Inserts a new user into the users table."""
     connection = create_db_connection()
     if connection is None:
         return None
 
-    cursor = None # Initialize cursor
-    user_id = None # Initialize user_id
-    # Query includes email, username, and password_hash columns
+    cursor = None
+    user_id = None
     query = "INSERT INTO users (email, username, password_hash) VALUES (%s, %s, %s)"
 
     try:
         cursor = connection.cursor()
-        # Execute with email, username, password_hash
         cursor.execute(query, (email, username, password_hash))
         connection.commit()
-        user_id = cursor.lastrowid # Get the ID of the newly inserted row
+        user_id = cursor.lastrowid
         print(f"[DB] User created: {email} ({username}) (ID: {user_id})", file=sys.stderr)
         return user_id
     except mysql.connector.IntegrityError as e:
-        # This error usually occurs for UNIQUE constraints (email or username)
         print(f"[DB] Error creating user: Email or username already exists. {e}", file=sys.stderr)
         connection.rollback()
-        return None # Indicate user creation failed (e.g., duplicate)
+        return None
     except Error as e:
         print(f"[DB] Error creating user: {e}", file=sys.stderr)
         connection.rollback()
@@ -73,7 +84,6 @@ def create_user(email, username, password_hash):
             connection.close()
 
 
-# Corrected find_user_by_email function - Selects email, username, and password_hash
 def find_user_by_email(email):
     """Finds a user by email and returns their ID, email, username, and password hash."""
     connection = create_db_connection()
@@ -82,15 +92,12 @@ def find_user_by_email(email):
 
     cursor = None
     user = None
-    # CORRECTED QUERY: SELECTS id, email, username, and password_hash
     query = "SELECT id, email, username, password_hash FROM users WHERE email = %s"
 
     try:
-        cursor = connection.cursor(dictionary=True) # Return results as dictionary
+        cursor = connection.cursor(dictionary=True)
         cursor.execute(query, (email,))
         user = cursor.fetchone()
-        # print(f"[DB] Finding user by email: {email} - Result: {user}", file=sys.stderr) # Optional: uncomment for debugging
-        # user will be a dictionary like { 'id': ..., 'email': ..., 'username': ..., 'password_hash': ... } or None
         return user
     except Error as e:
         print(f"[DB] Error finding user by email: {e}", file=sys.stderr)
@@ -102,7 +109,6 @@ def find_user_by_email(email):
             connection.close()
 
 
-# Corrected find_user_by_id function - Selects id, email, and username
 def find_user_by_id(user_id):
     """Finds a user by ID and returns their details (id, email, username)."""
     connection = create_db_connection()
@@ -115,12 +121,9 @@ def find_user_by_id(user_id):
         user_id = int(user_id)
 
         cursor = connection.cursor(dictionary=True)
-        # CORRECTED QUERY: SELECTS id, email, and username
         query = "SELECT id, email, username FROM users WHERE id = %s"
         cursor.execute(query, (user_id,))
         user = cursor.fetchone()
-        # print(f"[DB] Finding user by ID: {user_id} - Result: {user}", file=sys.stderr) # Optional: uncomment for debugging
-        # user will be a dictionary like { 'id': ..., 'email': ..., 'username': ... } or None
         return user
     except ValueError:
         print(f"[DB] Error: Invalid user ID format - {user_id}", file=sys.stderr)
@@ -135,152 +138,222 @@ def find_user_by_id(user_id):
             connection.close()
 
 
-# save_analysis_result function (already correct)
 def save_analysis_result(user_id, item_type, item_data, analysis_result):
     """Saves an analysis result to the analysis_history table."""
     connection = create_db_connection()
     if connection is None:
+        print("[DB] Save failed: Database connection is None.", file=sys.stderr)
         return False
 
-    cursor = None # Initialize cursor
+    cursor = None
+    history_item_id = None
     try:
         user_id = int(user_id)
+
+        # Ensure item_data is not too long for logging, but use the full data for insertion
+        item_data_log = item_data[:100] + '...' if len(item_data) > 100 else item_data
+
+        # Convert analysis_result dict to JSON string
         analysis_result_json = json.dumps(analysis_result)
+        analysis_result_log = analysis_result_json[:100] + '...' if len(analysis_result_json) > 100 else analysis_result_json
+
 
         cursor = connection.cursor()
         query = """
         INSERT INTO analysis_history (user_id, item_type, item_data, analysis_result)
         VALUES (%s, %s, %s, %s)
         """
+        print(f"[DB] Attempting to execute save query for user {user_id}...", file=sys.stderr)
+        # print(f"[DB] Query: {query}", file=sys.stderr) # Too verbose for standard run
+        # print(f"[DB] Params: ({user_id}, {item_type}, '{item_data_log}', '{analysis_result_log}')", file=sys.stderr) # Too verbose
+
+        # Execute the insert query
         cursor.execute(query, (user_id, item_type, item_data, analysis_result_json))
+
+        print(f"[DB] Execute successful, attempting to commit transaction...", file=sys.stderr)
+        # Commit the transaction to save the changes to the database
         connection.commit()
+        print(f"[DB] Commit successful.", file=sys.stderr)
+
+
+        # Get the ID of the last inserted row
         history_item_id = cursor.lastrowid
-        print(f"[DB] Analysis result saved for user {user_id} (ID: {history_item_id})", file=sys.stderr)
+        print(f"[DB] Analysis result saved for user {user_id} (History ID: {history_item_id})", file=sys.stderr)
+
+        # Return the ID on successful save
         return history_item_id
-    except ValueError:
-        print(f"[DB] Error saving analysis result: Invalid user ID format - {user_id}", file=sys.stderr)
-        connection.rollback()
+
+    except ValueError as e:
+        print(f"[DB] Save failed (ValueError): Invalid user ID format - {user_id}. Error: {e}", file=sys.stderr)
+        if connection and connection.is_connected(): connection.rollback()
+        return False
+    except mysql.connector.IntegrityError as e:
+         # Handle cases like duplicate key errors if needed, though unlikely for history
+        print(f"[DB] Save failed (IntegrityError): Database integrity issue. Error: {e}", file=sys.stderr)
+        if connection and connection.is_connected(): connection.rollback()
         return False
     except Error as e:
-        print(f"[DB] Error saving analysis result: {e}", file=sys.stderr)
-        connection.rollback()
+        # Log specific MySQL database errors during execute or commit
+        print(f"[DB] Save failed (MySQL Error): Error executing query or committing. Error: {e}", file=sys.stderr)
+        if connection and connection.is_connected(): connection.rollback() # Roll back the transaction on error
+        return False # Indicate failure
+    except Exception as e:
+        # Catch any other unexpected exceptions
+        import traceback
+        print(f"[DB] Save failed (Unexpected Error): An unexpected error occurred. Error: {e}\n{traceback.format_exc()}", file=sys.stderr)
+        if connection and connection.is_connected(): connection.rollback()
         return False
     finally:
+        # Ensure cursor is closed, connection is closed if it was opened
         if cursor:
             cursor.close()
         if connection and connection.is_connected():
-            connection.close()
+             # Only close if connection was successfully established
+             # print("[DB] Closing database connection.", file=sys.stderr)
+             connection.close()
+        else:
+             print("[DB] Connection was not active or failed to establish, not closing.", file=sys.stderr)
 
-# get_user_history function (already correct)
-def get_user_history(user_id):
-    """Fetches analysis history for a given user ID."""
+
+# Corrected get_user_history function (filtering logic should be fixed now)
+def get_user_history(user_id, filters=None):
+    """
+    Fetches analysis history for a given user ID, with optional filtering.
+
+    Args:
+        user_id (int): The ID of the user.
+        filters (dict, optional): A dictionary of filters.
+            Expected keys: 'item_type', 'risk_level', 'is_fraud', 'search_term'.
+            Defaults to None (no filtering).
+
+    Returns:
+        list: A list of history items (dictionaries), or an empty list on error/no results.
+    """
     connection = create_db_connection()
     if connection is None:
+        print("[DB] Get history failed: Database connection is None.", file=sys.stderr)
         return []
 
     cursor = None
     history_items = []
-    query = "SELECT id, item_type, item_data, analysis_result, analyzed_at FROM analysis_history WHERE user_id = %s ORDER BY analyzed_at DESC"
+    base_query = "SELECT id, item_type, item_data, analysis_result, analyzed_at FROM analysis_history WHERE user_id = %s"
+    where_clauses = []
+    query_params = [user_id]
 
     try:
         user_id = int(user_id)
+
+        # Build WHERE clauses based on filters
+        if filters:
+            # Filter by item_type ('url' or 'qr')
+            item_type = filters.get('item_type')
+            # Check for empty string because frontend sends '' for 'All Types'
+            if item_type and item_type.lower() != '' and item_type.lower() != 'all':
+                where_clauses.append("item_type = %s")
+                query_params.append(item_type)
+
+            # Filter by risk_level ('Low', 'Medium', 'High', 'Critical', 'Safe')
+            risk_level = filters.get('risk_level')
+            # Check for empty string
+            if risk_level and risk_level.lower() != '' and risk_level.lower() != 'all':
+                 # Use JSON_EXTRACT and CAST for reliable string comparison
+                 where_clauses.append("CAST(JSON_EXTRACT(analysis_result, '$.risk_level') AS CHAR) = %s")
+                 query_params.append(risk_level)
+                 # Removed the redundant is_fraud='false' clause from here
+
+
+            # Filter by is_fraud (boolean true or false)
+            # Check if the key 'is_fraud' is present in the filters dictionary, regardless of its boolean value
+            if 'is_fraud' in filters:
+                 # Use JSON_EXTRACT and CAST for reliable string comparison
+                 where_clauses.append("CAST(JSON_EXTRACT(analysis_result, '$.is_fraud') AS CHAR) = %s")
+                 # Append the string 'true' or 'false' based on the boolean value in the filters dict
+                 query_params.append(str(bool(filters['is_fraud'])).lower()) # Convert Python bool from filters dict to lowercase string 'true' or 'false'
+
+
+            # Filter by search_term (in item_data)
+            search_term = filters.get('search_term')
+            if search_term:
+                where_clauses.append("item_data LIKE %s")
+                query_params.append(f"%{search_term}%")
+
+            # Add more filters here as needed (e.g., date range)
+            # start_date = filters.get('start_date')
+            # if start_date:
+            #     where_clauses.append("analyzed_at >= %s")
+            #     query_params.append(start_date) # Ensure date format is compatible with MySQL
+
+            # end_date = filters.get('end_date')
+            # if end_date:
+            #     where_clauses.append("analyzed_at <= %s")
+            #     query_params.append(end_date) # Ensure date format is compatible with MySQL
+
+
+        full_query = base_query
+        if where_clauses:
+            full_query += " AND " + " AND ".join(where_clauses)
+
+        full_query += " ORDER BY analyzed_at DESC"
+
+        print(f"[DB] Executing history query: {full_query} with params {query_params}", file=sys.stderr)
 
         cursor = connection.cursor(dictionary=True)
-        cursor.execute(query, (user_id,))
+        cursor.execute(full_query, tuple(query_params))
         history_items = cursor.fetchall()
-        # print(f"[DB] Fetched history for user {user_id}: {len(history_items)} items", file=sys.stderr)
 
+        # Process analysis_result JSON and ensure key types for frontend consistency
         for item in history_items:
-            if 'analysis_result' in item and isinstance(item['analysis_result'], str):
-                try:
-                    item['analysis_result'] = json.loads(item['analysis_result'])
-                except json.JSONDecodeError:
-                    print(f"[DB] Warning: Could not parse JSON for history item ID {item.get('id')}", file=sys.stderr)
-                    item['analysis_result'] = None
+            # Ensure analysis_result is present and is a string/bytes before parsing
+            if 'analysis_result' in item and item['analysis_result'] is not None:
+                if isinstance(item['analysis_result'], (bytes, bytearray, str)):
+                     try:
+                        json_string = item['analysis_result'].decode('utf-8') if isinstance(item['analysis_result'], (bytes, bytearray)) else item['analysis_result']
+                        if json_string.strip(): # Check if JSON string is not empty or just whitespace
+                           item['analysis_result'] = json.loads(json_string)
+                        else:
+                            print(f"[DB] Warning: Empty JSON string for history item ID {item.get('id')}", file=sys.stderr)
+                            item['analysis_result'] = {}
+
+                     except json.JSONDecodeError:
+                        print(f"[DB] Warning: Could not parse JSON for history item ID {item.get('id')}. Raw data: {item['analysis_result']}", file=sys.stderr)
+                        item['analysis_result'] = {} # Assign empty dict on decode error
+                # Ensure is_fraud is boolean and risk_level is string after parsing
+                if isinstance(item['analysis_result'], dict):
+                    # Safely get is_fraud, convert to boolean. Default to False if key is missing or value is not true/false-like
+                    item['analysis_result']['is_fraud'] = bool(item['analysis_result'].get('is_fraud', False))
+                     # Safely get risk_level, convert to string. Default to 'Unknown' if key is missing or value is None
+                    item['analysis_result']['risk_level'] = str(item['analysis_result'].get('risk_level', 'Unknown'))
+                else:
+                    # If analysis_result wasn't a parsable JSON dict, replace with empty dict
+                     item['analysis_result'] = {}
+                     print(f"[DB] Warning: analysis_result for history item ID {item.get('id')} was not a dictionary after parsing.", file=sys.stderr)
+
+            else:
+                 # If analysis_result was None initially, set to empty dict
+                 item['analysis_result'] = {}
+
 
         return history_items
-    except ValueError:
-        print(f"[DB] Error fetching user history: Invalid user ID format - {user_id}", file=sys.stderr)
+    except ValueError as e: # Explicitly catch ValueError for user_id conversion
+        print(f"[DB] Error fetching user history: Invalid user ID format - {user_id}. Error: {e}", file=sys.stderr)
         return []
-    except Error as e:
-        print(f"[DB] Error fetching user history: {e}", file=sys.stderr)
+    except mysql.connector.Error as e: # Catch specific MySQL errors
+        import traceback
+        print(f"[DB] MySQL Error fetching user history: {e}\n{traceback.format_exc()}", file=sys.stderr)
+        return []
+    except Exception as e: # Catch any other unexpected exceptions
+        import traceback
+        print(f"[DB] Unexpected Error fetching user history: {e}\n{traceback.format_exc()}", file=sys.stderr)
         return []
     finally:
         if cursor:
             cursor.close()
         if connection and connection.is_connected():
-            connection.close()
-
-# delete_history_item function (already correct)
-def delete_history_item(item_id, user_id):
-    """Deletes a specific history item, ensuring it belongs to the user."""
-    connection = create_db_connection()
-    if connection is None:
-        return False
-
-    cursor = None
-    try:
-        item_id = int(item_id)
-        user_id = int(user_id)
-
-        cursor = connection.cursor()
-        query = "DELETE FROM analysis_history WHERE id = %s AND user_id = %s"
-        cursor.execute(query, (item_id, user_id))
-        connection.commit()
-
-        if cursor.rowcount > 0:
-            print(f"[DB] History item {item_id} deleted for user {user_id}", file=sys.stderr)
-            return True
-        else:
-            print(f"[DB] History item {item_id} not found for user {user_id} or already deleted.", file=sys.stderr)
-            return False
-    except ValueError:
-        print(f"[DB] Error deleting history item: Invalid ID format (item_id: {item_id}, user_id: {user_id})", file=sys.stderr)
-        connection.rollback()
-        return False
-    except Error as e:
-        print(f"[DB] Error deleting history item: {e}", file=sys.stderr)
-        connection.rollback()
-        return False
-    finally:
-        if cursor:
-            cursor.close()
-        if connection and connection.is_connected():
-            connection.close()
-
-# clear_user_history function (already correct)
-def clear_user_history(user_id):
-    """Deletes all history items for a specific user."""
-    connection = create_db_connection()
-    if connection is None:
-        return False
-
-    cursor = None
-    try:
-        user_id = int(user_id)
-
-        cursor = connection.cursor()
-        query = "DELETE FROM analysis_history WHERE user_id = %s"
-        cursor.execute(query, (user_id,))
-        connection.commit()
-        print(f"[DB] All history cleared for user {user_id}. Deleted {cursor.rowcount} items.", file=sys.stderr)
-        return True
-    except ValueError:
-        print(f"[DB] Error clearing user history: Invalid user ID format - {user_id}", file=sys.stderr)
-        connection.rollback()
-        return False
-    except Error as e:
-        print(f"[DB] Error clearing user history: {e}", file=sys.stderr)
-        connection.rollback()
-        return False
-    finally:
-        if cursor:
-            cursor.close()
-        if connection and connection.is_connected():
-            connection.close()
+             connection.close()
 
 
-# --- New Function to Get All Users ---
+# --- User Listing and Deletion Functions (Moved before __main__ block) ---
+
 def get_all_users():
     """Fetches all users (id, email, username) from the database."""
     connection = create_db_connection()
@@ -295,7 +368,7 @@ def get_all_users():
         cursor = connection.cursor(dictionary=True)
         cursor.execute(query)
         users = cursor.fetchall()
-        print(f"[DB] Fetched all users: {len(users)} items", file=sys.stderr)
+        # print(f"[DB] Fetched all users: {len(users)} items", file=sys.stderr) # Keep logging minimal unless debugging
         return users
     except Error as e:
         print(f"[DB] Error fetching all users: {e}", file=sys.stderr)
@@ -306,7 +379,6 @@ def get_all_users():
         if connection and connection.is_connected():
             connection.close()
 
-# --- New Function to Delete a User by ID ---
 def delete_user_by_id(user_id):
     """Deletes a user by their ID."""
     connection = create_db_connection()
@@ -318,15 +390,7 @@ def delete_user_by_id(user_id):
         user_id = int(user_id)
 
         cursor = connection.cursor()
-        # Added CASCADE DELETE in schema.sql is recommended,
-        # but if not, history for this user might remain.
-        # Consider deleting history first if needed.
-        # query_delete_history = "DELETE FROM analysis_history WHERE user_id = %s"
-        # cursor.execute(query_delete_history, (user_id,))
-        # connection.commit()
-        # print(f"[DB] Deleted history for user {user_id} before deleting user.")
-
-
+        # Added CASCADE DELETE on analysis_history in schema means we only need to delete the user
         query_delete_user = "DELETE FROM users WHERE id = %s"
         cursor.execute(query_delete_user, (user_id,))
         connection.commit()
@@ -352,25 +416,20 @@ def delete_user_by_id(user_id):
             connection.close()
 
 
-# Example Usage (for testing the handler.py file itself)
+# --- Example Usage (for testing the handler.py file itself) ---
 if __name__ == "__main__":
     print("Testing Database Handler (MySQL)...")
 
-    # --- Ensure your MySQL server is running and credentials above are correct! ---
-
-    # --- Test Connection ---
-    print("\nAttempting simple database connection test...")
     conn = create_db_connection()
     if conn:
         print("Simple database connection test successful.")
         conn.close()
     else:
-        print("Simple database connection test failed. Please check your MySQL server and credentials.")
-        sys.exit(1) # Exit if connection fails
+        print("Simple database connection test failed. Please check your MySQL server and credentials in the .env file.")
+        sys.exit(1)
 
-
-    # --- Test Get All Users ---
     print("\nAttempting to get all users...")
+    # Corrected NameError by moving get_all_users definition above this block
     all_users = get_all_users()
     if all_users is not None:
         if all_users:
@@ -382,76 +441,69 @@ if __name__ == "__main__":
     else:
         print("Failed to fetch users due to a database error.")
 
-    # --- Example: Test Delete User (UNCOMMENT and REPLACE with a real user ID to test) ---
-    # print("\nAttempting to delete a user (example)...")
-    # user_id_to_delete = 99 # <--- REPLACE with an actual user ID from your database for testing!
-    # delete_success = delete_user_by_id(user_id_to_delete)
-    # print(f"User deletion successful: {delete_success}")
+    # --- Example: Test History Filtering ---
+    print("\nAttempting to fetch history with filters...")
+    # Assuming user with ID 1 exists and has some history
+    # You might need to change this ID to match your test user's ID
+    test_user_id = 6 # Assuming user 6 (honeygirl) is your test user now
 
-    # --- Example: Test User Creation, Find, History, etc. (UNCOMMENT sections as needed) ---
-    # Ensure Werkzeug is installed (uv add Werkzeug) if testing user creation/password hashing
-    # try:
-    #     from werkzeug.security import generate_password_hash, check_password_hash
-
-    #     print("\nAttempting to create a test user...")
-    #     test_email = "test_user_" + str(int(time.time())) + "@example.com" # Use timestamp to make email unique
-    #     test_username = "testuser_" + str(int(time.time())) # Use timestamp for unique username
-    #     test_password = "secure_password_123"
-    #     dummy_password_hash = generate_password_hash(test_password)
-    #     test_user_id = create_user(test_email, test_username, dummy_password_hash)
-
-    #     if test_user_id:
-    #         print(f"Created user with ID: {test_user_id}, Email: {test_email}, Username: {test_username}")
-
-    #         print(f"\nAttempting to find user by email: {test_email}")
-    #         found_user = find_user_by_email(test_email)
-    #         print(f"Found user: {found_user}")
-
-    #         if found_user and check_password_hash(found_user['password_hash'], test_password):
-    #             print("Password check successful.")
-    #         else:
-    #             print("Password check failed or user not found.")
-
-    #         if found_user: # Proceed only if user was found
-    #              print(f"\nAttempting to find user by ID: {found_user['id']}")
-    #              found_user_by_id = find_user_by_id(found_user['id'])
-    #              print(f"Found user by ID: {found_user_by_id}")
+    # Example filters
+    filters_url_only = {'item_type': 'url'}
+    filters_fraud_only = {'is_fraud': True} # Note: Flask-Login sends 'true'/'false' strings, but internal handler logic might prefer bool/string based on implementation
+    filters_not_fraud_only = {'is_fraud': False}
+    filters_critical_risk = {'risk_level': 'Critical', 'is_fraud': False} # Specific risk level filters should also include is_fraud=False
+    filters_high_risk = {'risk_level': 'High', 'is_fraud': False}
+    filters_medium_risk = {'risk_level': 'Medium', 'is_fraud': False}
+    filters_low_risk = {'risk_level': 'Low', 'is_fraud': False}
+    filters_safe_risk = {'risk_level': 'Safe', 'is_fraud': False}
+    filters_search_example = {'search_term': 'example'} # Search for 'example' in item_data
+    filters_all = {} # Empty filter means get all history for the user
 
 
-    #              print("\nAttempting to save a test analysis result...")
-    #              test_result = {"is_fraud": False, "confidence": "98.7", "risk_level": "Low", "risk_factors": ["Short URL"]}
-    #              save_success = save_analysis_result(found_user['id'], "url", "https://www.anothersafeurl.com", test_result)
-    #              print(f"Save successful: {save_success}")
-
-    #              test_qr_result = {"is_fraud": True, "confidence": "75.1", "risk_level": "Medium"}
-    #              save_success_qr = save_analysis_result(found_user['id'], "qr", "malicious_qr.png (http://bad.link)", test_qr_result)
-    #              print(f"QR Save successful: {save_success_qr}")
+    print(f"\nFetching history for user {test_user_id} (All):")
+    history_all = get_user_history(test_user_id, filters_all)
+    print(f"Found {len(history_all)} items.")
+    if history_all:
+        print("First item example:", history_all[0]) # Print first item to see structure
+    # for item in history_all: print(item) # Uncomment to see all items
 
 
-    #              print(f"\nAttempting to fetch user history for user ID: {found_user['id']}")
-    #              history = get_user_history(found_user['id'])
-    #              print("Fetched History:")
-    #              if history:
-    #                  for item in history:
-    #                      print(item)
-    #                  # Example of deleting the first item fetched
-    #                  if history: # Check if history is not empty
-    #                      first_item_id = history[0]['id']
-    #                      print(f"\nAttempting to delete history item ID: {first_item_id}")
-    #                      delete_success = delete_history_item(first_item_id, found_user['id'])
-    #                      print(f"Delete successful: {delete_success}")
-    #              else:
-    #                  print("No history found.")
+    print(f"\nFetching history for user {test_user_id} (URL only):")
+    history_url = get_user_history(test_user_id, filters_url_only)
+    print(f"Found {len(history_url)} URL items.")
+    # for item in history_url: print(item) # Uncomment to see items
 
-    #              print(f"\nAttempting to clear all history for user ID: {found_user['id']}")
-    #              # clear_success = clear_user_history(found_user['id']) # Uncomment to test clearing history
-    #              # print(f"Clear history successful: {clear_success}")
+    print(f"\nFetching history for user {test_user_id} (Fraudulent only):")
+    history_fraud = get_user_history(test_user_id, filters_fraud_only)
+    print(f"Found {len(history_fraud)} fraudulent items.")
+    # for item in history_fraud: print(item) # Uncomment to see items
+
+    print(f"\nFetching history for user {test_user_id} (Not Fraudulent only):")
+    history_not_fraud = get_user_history(test_user_id, filters_not_fraud_only)
+    print(f"Found {len(history_not_fraud)} not fraudulent items.")
+    # for item in history_not_fraud: print(item) # Uncomment to see items
 
 
-    # except ImportError:
-    #      print("\nWerkzeug not installed. Skipping user creation/password hashing tests.")
-    # except Error as e:
-    #      print(f"\nAn error occurred during tests: {e}")
+    print(f"\nFetching history for user {test_user_id} (Medium Risk only):")
+    history_medium = get_user_history(test_user_id, filters_medium_risk)
+    print(f"Found {len(history_medium)} medium risk items.")
+    # for item in history_medium: print(item) # Uncomment to see items
+
+    print(f"\nFetching history for user {test_user_id} (High Risk only):")
+    history_high = get_user_history(test_user_id, filters_high_risk)
+    print(f"Found {len(history_high)} high risk items.")
+    # for item in history_high: print(item) # Uncomment to see items
+
+    print(f"\nFetching history for user {test_user_id} (Safe Risk only):")
+    history_safe = get_user_history(test_user_id, filters_safe_risk)
+    print(f"Found {len(history_safe)} safe risk items.")
+    # for item in history_safe: print(item) # Uncomment to see items
+
+
+    print(f"\nFetching history for user {test_user_id} (Search 'example'):")
+    history_search = get_user_history(test_user_id, filters_search_example)
+    print(f"Found {len(history_search)} items matching search term.")
+    # for item in history_search: print(item) # Uncomment to see items
 
 
     print("\nTesting complete.")

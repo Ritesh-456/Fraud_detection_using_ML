@@ -1,3 +1,5 @@
+# D:\Projects\Fraud Detection using ML\Fraud_detection_using_ML\Python scripts\routes.py
+
 import sys
 import os
 
@@ -15,6 +17,8 @@ def analyze_url(url):
     """
     Placeholder function to simulate URL analysis and saving results.
     The actual analysis and saving logic is in app.py and helpers/db/handler.py.
+
+    NOTE: This function is not currently used by app.py.
     """
     print(f"Simulating analysis for: {url}")
     # This call might fail if db.save_url_result doesn't exist or has a different signature

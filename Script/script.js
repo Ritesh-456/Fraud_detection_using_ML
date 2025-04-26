@@ -13,6 +13,7 @@ const confidenceValueSpan = document.getElementById('confidence-value');
 const confidenceBarFill = document.getElementById('confidence-bar');
 const riskLevelSpan = document.getElementById('risk-level');
 const riskFactorsList = document.getElementById('risk-factors-list');
+// Corrected typo on this line:
 const qrInput = document.getElementById('qr-input');
 const qrImageContainer = document.getElementById('qr-image-container');
 const qrImage = document.getElementById('qr-image');
@@ -21,140 +22,380 @@ const qrResultCard = document.getElementById('qr-result');
 const historyList = document.getElementById('history-list');
 const clearHistoryButton = document.getElementById('clear-history-button'); // Use the unique ID
 
+// Message display area (ensure this element exists in index.html)
+const messageArea = document.getElementById('message-area');
 
-document.addEventListener('DOMContentLoaded', function() {
-    const modeToggle = document.getElementById('mode-toggle');
-    const body = document.body;
+// History Filter UI Elements
+const historyControlsDiv = document.getElementById('history-controls'); // Container for controls
+const filterTypeSelect = document.getElementById('filter-type');
+const filterRiskSelect = document.getElementById('filter-risk');
+const applyFiltersButton = document.getElementById('apply-filters-button');
+const exportHistoryButton = document.getElementById('export-history-button'); // Export button
 
-    // Load saved mode from localStorage
-    let currentMode = localStorage.getItem('mode') || 'light'; // Default to light
-    body.classList.add(currentMode + '-mode'); // Apply initial mode
 
-    // Toggle Mode
-    modeToggle.addEventListener('click', function() {
-        if (currentMode === 'light') {
-            currentMode = 'dark';
-        } else {
-            currentMode = 'light';
+// --- Functions for Filtering and Export ---
+
+function applyHistoryFilters() {
+    console.log('Applying history filters...');
+    // displayMessage('Applying filters...', 'info'); // Avoid spamming this message
+
+    // Get filter values from UI elements
+    const typeFilter = filterTypeSelect ? filterTypeSelect.value : '';
+    const riskFilterValue = filterRiskSelect ? filterRiskSelect.value : ''; // Get the VALUE attribute
+
+
+    // Construct filters object based on the VALUE
+    const filters = {};
+
+    // Add type filter if selected (and not the default empty/all option)
+    if (typeFilter !== '' && typeFilter.toLowerCase() !== 'all') {
+        filters.type = typeFilter;
+    }
+
+    // Correctly map the new riskFilterValue to backend filter keys
+    if (riskFilterValue === 'is_fraud_true') {
+        filters.is_fraud = 'true'; // Backend expects 'true' or 'false' string for this filter
+    } else if (riskFilterValue === 'is_fraud_false') {
+        filters.is_fraud = 'false';
+    } else if (riskFilterValue.startsWith('risk_')) {
+        // Extract the risk level string from the value (e.g., 'Critical' from 'risk_Critical')
+        filters.risk_level = riskFilterValue.substring(5); // Remove 'risk_' prefix
+    }
+    // If riskFilterValue is '', no risk/is_fraud filter is added (handled by backend)
+
+    // Add other filters here as you add UI elements (e.g., search input, date pickers)
+    // const searchTermInput = document.getElementById('search-input');
+    // const searchTerm = searchTermInput ? searchTermInput.value.trim() : '';
+    // if (searchTerm !== '') {
+    //    filters.search_term = searchTerm;
+    // }
+
+
+    // Reload history with filters
+    loadHistory(filters);
+}
+
+async function exportHistory() {
+    console.log('Attempting to export history...');
+    displayMessage('Preparing history for export...', 'info');
+
+    // Get the currently applied filters so the export is filtered as well
+    const filters = {};
+
+    if (filterTypeSelect && filterTypeSelect.value !== '' && filterTypeSelect.value.toLowerCase() !== 'all') {
+        filters.type = filterTypeSelect.value;
+    }
+
+    if (filterRiskSelect) {
+        const riskFilterValue = filterRiskSelect.value;
+        if (riskFilterValue === 'is_fraud_true') {
+            filters.is_fraud = 'true';
+        } else if (riskFilterValue === 'is_fraud_false') {
+            filters.is_fraud = 'false';
+        } else if (riskFilterValue.startsWith('risk_')) {
+            filters.risk_level = riskFilterValue.substring(5);
+        }
+    }
+    // ... other filters (search, date range) for export
+
+
+    const queryParams = new URLSearchParams();
+    for (const key in filters) {
+        if (filters[key] !== '' && filters[key] !== null && filters[key] !== undefined) {
+            queryParams.append(encodeURIComponent(key), encodeURIComponent(filters[key]));
+        }
+    }
+
+    const fetchUrl = `http://127.0.0.1:5000/export-history?${queryParams.toString()}`;
+    console.log("Fetching history for export from:", fetchUrl);
+
+
+    try {
+        // Use a standard fetch, let the browser handle the download dialog
+        const response = await fetch(fetchUrl, {
+            method: 'GET',
+            headers: {
+                // Browser handles session cookies for authentication
+            }
+        });
+
+        // Check for specific errors first
+        if (response.status === 401 || response.status === 405) {
+            displayMessage('Please log in to export history.', 'error');
+            showAuthButtons();
+            return; // Stop execution
         }
 
-        // Toggle the class on the body
-        body.classList.remove('light-mode', 'dark-mode'); // Remove both classes
-        body.classList.add(currentMode + '-mode');        // Add the current mode's class
+        if (response.status === 204) { // Backend might return 204 No Content if no history found
+            displayMessage('No history found to export with current filters.', 'info');
+            return; // Stop execution
+        }
 
-        // Save mode to localStorage
-        localStorage.setItem('mode', currentMode);
-    });
-});
+        if (response.ok) { // Status 200-299
+            // Get the filename from the Content-Disposition header if possible, fallback to default
+            const contentDisposition = response.headers.get('Content-Disposition');
+            let filename = 'history_export.csv';
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="(.+)"/);
+                if (filenameMatch && filenameMatch.length > 1) {
+                    filename = filenameMatch[1];
+                }
+            }
+
+            // Get the Blob data
+            const blob = await response.blob();
+
+            // Create a link element
+            const a = document.createElement('a');
+
+            // Create a download link URL
+            const url = window.URL.createObjectURL(blob);
+            a.href = url;
+            a.download = filename; // Set the desired filename
+
+            // Append the link to the body and trigger the download
+            document.body.appendChild(a);
+            a.click();
+
+            // Clean up by revoking the object URL and removing the link
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+
+            displayMessage('History exported successfully.', 'success');
+
+        } else { // Handle other error statuses
+            const errorText = await response.text(); // Get raw text for potential error message
+            let errorMsg = `Failed to export history: Status ${response.status}`;
+            try {
+                const errorResult = JSON.parse(errorText);
+                errorMsg = 'Failed to export history: ' + (errorResult.error || errorText);
+            } catch (e) {
+                errorMsg = 'Failed to export history: ' + errorText;
+            }
+            displayMessage(errorMsg, 'error');
+            console.error('Failed to export history:', response.status, errorText);
+        }
+
+    } catch (error) {
+        console.error('Network error during history export:', error);
+        displayMessage('An error occurred during export.', 'error');
+    }
+}
+
+
+// --- Message Display Function ---
+function displayMessage(message, type = 'info') {
+    const messageAreaElement = document.getElementById('message-area');
+
+    if (!messageAreaElement) {
+        console.warn("Message area element not found. Falling back to console log.", message, type);
+        if (type === 'error') console.error(message);
+        else if (type === 'success') console.log(message);
+        else console.info(message);
+        return;
+    }
+
+    // Clear previous messages before appending a new one (adjust if you want multiple messages)
+    messageAreaElement.innerHTML = '';
+
+
+    const messageElement = document.createElement('div');
+    messageElement.textContent = message;
+    messageElement.className = `message ${type}`; // Add class like 'message info', 'message success', etc.
+
+
+    messageAreaElement.appendChild(messageElement);
+
+    // Auto-remove non-error, non-warning messages after a few seconds
+    if (type !== 'error' && type !== 'warning') {
+        setTimeout(() => {
+            if (messageAreaElement.contains(messageElement)) {
+                messageAreaElement.removeChild(messageElement);
+            }
+        }, 2000); // 2 seconds
+    }
+}
+
 
 // --- View State Management ---
 function showLoginForm() {
-    loginForm.style.display = 'block';
-    registerForm.style.display = 'none';
-    mainAppContent.style.display = 'none';
-    authFormsDiv.style.display = 'none';
-    userStatus.style.display = 'none';
+    if (loginForm) loginForm.style.display = 'block';
+    if (registerForm) registerForm.style.display = 'none';
+    if (mainAppContent) mainAppContent.style.display = 'none';
+    if (authFormsDiv) authFormsDiv.style.display = 'none'; // Hide auth buttons div
+    if (userStatus) userStatus.style.display = 'none'; // Hide user status
     // Clear forms when switching
-    document.getElementById('login-email').value = '';
-    document.getElementById('login-password').value = '';
+    const loginEmailInput = document.getElementById('login-email');
+    if (loginEmailInput) loginEmailInput.value = '';
+    const loginPasswordInput = document.getElementById('login-password');
+    if (loginPasswordInput) loginPasswordInput.value = '';
+
+    // Keep messages visible when switching between login/register forms
+    // displayMessage(''); // Clear messages
 }
 
 function showRegisterForm() {
-    loginForm.style.display = 'none';
-    registerForm.style.display = 'block';
-    mainAppContent.style.display = 'none';
-    authFormsDiv.style.display = 'none';
-    userStatus.style.display = 'none';
+    if (loginForm) loginForm.style.display = 'none';
+    if (registerForm) registerForm.style.display = 'block';
+    if (mainAppContent) mainAppContent.style.display = 'none';
+    if (authFormsDiv) authFormsDiv.style.display = 'none'; // Hide auth buttons div
+    if (userStatus) userStatus.style.display = 'none'; // Hide user status
     // Clear forms when switching
-    document.getElementById('register-email').value = '';
-    document.getElementById('register-password').value = '';
-    document.getElementById('confirm-password').value = '';
-    // Also clear username field if added
+    const registerEmailInput = document.getElementById('register-email');
+    if (registerEmailInput) registerEmailInput.value = '';
+    const registerPasswordInput = document.getElementById('register-password');
+    if (registerPasswordInput) registerPasswordInput.value = '';
+    const confirmPasswordInput = document.getElementById('confirm-password');
+    if (confirmPasswordInput) confirmPasswordInput.value = '';
+
+    // Also clear username field
     const registerUsernameInput = document.getElementById('register-username');
     if (registerUsernameInput) {
         registerUsernameInput.value = '';
     }
+    // Keep messages visible when switching between login/register forms
+    // displayMessage(''); // Clear messages
 }
 
 // Update showMainApp function - displays user identifier (username)
 function showMainApp(userIdentifier) {
-    loginForm.style.display = 'none';
-    registerForm.style.display = 'none';
-    mainAppContent.style.display = 'grid';
-    authFormsDiv.style.display = 'none';
-    userStatus.style.display = 'flex';
-    userIdentifierSpan.textContent = userIdentifier; // Set the username
+    if (loginForm) loginForm.style.display = 'none';
+    if (registerForm) registerForm.style.display = 'none';
+    if (mainAppContent) mainAppContent.style.display = 'grid';
+    if (authFormsDiv) authFormsDiv.style.display = 'none'; // Hide auth buttons div
+    if (userStatus) userStatus.style.display = 'flex'; // Show user status
+    if (userIdentifierSpan) userIdentifierSpan.textContent = userIdentifier; // Set the username
+    // displayMessage(''); // Keep login success message temporarily
+
+    // Show history controls when main app is shown
+    if (historyControlsDiv) {
+        historyControlsDiv.style.display = 'flex'; // Or 'block' or 'grid' depending on CSS
+    }
 }
 
 function showAuthButtons() {
-    loginForm.style.display = 'none';
-    registerForm.style.display = 'none';
-    mainAppContent.style.display = 'none';
-    authFormsDiv.style.display = 'flex';
-    userStatus.style.display = 'none';
-    userIdentifierSpan.textContent = ''; // Clear display
+    if (loginForm) loginForm.style.display = 'none';
+    if (registerForm) registerForm.style.display = 'none';
+    if (mainAppContent) mainAppContent.style.display = 'none';
+    if (authFormsDiv) authFormsDiv.style.display = 'flex'; // Show auth buttons div
+    if (userStatus) userStatus.style.display = 'none'; // Hide user status
+    if (userIdentifierSpan) userIdentifierSpan.textContent = ''; // Clear display
 
-    // Clear analysis results and history
-    urlResultCard.style.display = 'none';
-    qrResultCard.style.display = 'none';
-    historyList.innerHTML = ''; // Clear history UI list
+    // Clear analysis results and history UI
+    if (urlResultCard) urlResultCard.style.display = 'none';
+    if (qrResultCard) qrResultCard.style.display = 'none';
+    if (historyList) historyList.innerHTML = ''; // Clear history UI list
     clearQR();
+    displayMessage(''); // Clear messages
+
+    // Hide history controls when auth buttons are shown
+    if (historyControlsDiv) {
+        historyControlsDiv.style.display = 'none';
+    }
 }
 
 // --- Authentication Functions (Backend API Calls) ---
 
 async function register() {
-    const email = document.getElementById('register-email').value;
-    const username = document.getElementById('register-username').value; // Get username value
-    const password = document.getElementById('register-password').value;
-    const confirmPassword = document.getElementById('confirm-password').value;
+    const emailInput = document.getElementById('register-email');
+    const usernameInput = document.getElementById('register-username');
+    const passwordInput = document.getElementById('register-password');
+    const confirmPasswordInput = document.getElementById('confirm-password');
 
-    if (!email || !username || !password || !confirmPassword) { // Check for username input
-        alert('Please fill in all fields.');
+    if (!emailInput || !usernameInput || !passwordInput || !confirmPasswordInput) {
+        console.error('Required registration input elements not found.');
+        displayMessage('Error: Registration form elements missing.', 'error');
+        return;
+    }
+
+    const email = emailInput.value.trim(); // Trim whitespace
+    const username = usernameInput.value.trim(); // Trim whitespace
+    const password = passwordInput.value;
+    const confirmPassword = confirmPasswordInput.value;
+
+
+    if (!email || !username || !password || !confirmPassword) {
+        displayMessage('Please fill in all fields.', 'warning');
+        return;
+    }
+    if (!/\S+@\S+\.\S+/.test(email)) { // Basic email format check
+        displayMessage('Please enter a valid email address.', 'warning');
         return;
     }
     if (password !== confirmPassword) {
-        alert('Passwords do not match.');
+        displayMessage('Passwords do not match.', 'warning');
         return;
     }
+    // Optional: Add password strength validation here
+
 
     console.log('Attempting to register:', email, username);
+    displayMessage('Registering...', 'info');
+
 
     try {
+        // Disable register button while fetching (Optional UI improvement)
+        // const registerButton = registerForm.querySelector('button');
+        // if (registerButton) registerButton.disabled = true;
+
         const response = await fetch('http://127.0.0.1:5000/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            // Include username in the body
             body: JSON.stringify({ email, username, password })
         });
         const result = await response.json();
 
         if (response.ok) {
-            alert('Registration successful! You can now log in.');
+            displayMessage('Registration successful! You can now log in.', 'success');
             showLoginForm(); // Show login form after successful registration
         } else {
-            alert('Registration failed: ' + (result.error || response.statusText));
+            const errorMsg = result.error || response.statusText || 'Unknown error';
+            displayMessage('Registration failed: ' + errorMsg, 'error');
             console.error('Registration error:', response.status, result);
         }
     } catch (error) {
         console.error('Network error during registration:', error);
-        alert('An error occurred during registration. Please try again.');
+        displayMessage('An error occurred during registration. Please try again.', 'error');
+    } finally {
+        // Re-enable register button (Optional UI improvement)
+        // const registerButton = registerForm.querySelector('button');
+        // if (registerButton) registerButton.disabled = false;
     }
 }
 
 
 async function login() {
-    const email = document.getElementById('login-email').value;
-    const password = document.getElementById('login-password').value;
+    const emailInput = document.getElementById('login-email');
+    const passwordInput = document.getElementById('login-password');
+
+    if (!emailInput || !passwordInput) {
+        console.error('Required login input elements not found.');
+        displayMessage('Error: Login form elements missing.', 'error');
+        return;
+    }
+
+    const email = emailInput.value.trim(); // Trim whitespace
+    const password = passwordInput.value;
+
 
     if (!email || !password) {
-        alert('Please enter email and password.');
+        displayMessage('Please enter email and password.', 'warning');
+        return;
+    }
+    if (!/\S+@\S+\.\S+/.test(email)) { // Basic email format check
+        displayMessage('Please enter a valid email address.', 'warning');
         return;
     }
 
     console.log('Attempting to login:', email);
+    displayMessage('Logging in...', 'info');
+
 
     try {
+        // Disable login button while fetching (Optional UI improvement)
+        // const loginButton = loginForm.querySelector('button');
+        // if (loginButton) loginButton.disabled = true;
+
         const response = await fetch('http://127.0.0.1:5000/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -164,51 +405,73 @@ async function login() {
 
         // Check for success and if username is available in the response
         if (response.ok && result.success && result.username) { // Ensure username is in the response
-            console.log('Login successful. Reloading page...');
-            // MODIFIED: Instead of showing main app directly, reload the page
-            window.location.reload(); // This triggers checkLoginStatus on the reloaded page
+            console.log('Login successful.'); // Reloading handles the rest
+            displayMessage('Login successful!', 'success');
+            // Reloading is needed because Flask-Login sets the session cookie
+            // which the *browser* needs to pick up on the next full page load.
+            // Delay reload slightly to show success message? Or just reload immediately.
+            // window.location.reload(); // Immediate reload
+            setTimeout(() => window.location.reload(), 500); // Delay for 0.5 seconds
 
         } else {
             // Handle login failure response from backend
-            alert('Login failed: ' + (result.error || 'Invalid email or password'));
+            const errorMsg = result.error || 'Invalid email or password';
+            displayMessage('Login failed: ' + errorMsg, 'error');
             console.error('Login error:', response.status, result);
         }
     } catch (error) {
-        // Handle network errors or issues before response
         console.error('Network error during login:', error);
-        alert('An error occurred during login. Please try again.');
+        displayMessage('An error occurred during login. Please try again.', 'error');
+    } finally {
+        // Re-enable login button (Optional UI improvement)
+        // const loginButton = loginForm.querySelector('button');
+        // if (loginButton) loginButton.disabled = false;
     }
 }
 
 async function logout() {
     console.log('Attempting to logout');
+    displayMessage('Logging out...', 'info');
 
     try {
+        // Disable logout button while fetching (Optional UI improvement)
+        // const logoutButton = userStatus.querySelector('button');
+        // if (logoutButton) logoutButton.disabled = true;
+
         const response = await fetch('http://127.0.0.1:5000/logout', {
             method: 'POST'
-             // Browser handles session cookies for authentication
+            // Browser handles session cookies for authentication
         });
 
         if (response.ok && (await response.json()).success) {
             console.log('Logout successful');
-            // MODIFIED: Reload page after logout to reset frontend state via checkLoginStatus
-             window.location.reload(); // This triggers checkLoginStatus on the reloaded page
+            displayMessage('Logged out successfully.', 'success');
+            // Reload page after logout to reset frontend state via checkLoginStatus
+            setTimeout(() => window.location.reload(), 500); // Delay for 0.5 seconds
         } else {
-             // Even if backend reports error, try to clear frontend state
-             console.error('Logout failed:', response.status);
-             window.location.reload(); // Still reload to reset state
-             alert('Logout failed, but frontend state cleared.');
+            // Even if backend reports error, try to clear frontend state
+            console.error('Logout failed:', response.status);
+            displayMessage('Logout failed, but frontend state cleared.', 'error');
+            // Still reload to reset state, even on backend error
+            setTimeout(() => window.location.reload(), 500); // Delay for 0.5 seconds
         }
     } catch (error) {
         console.error('Network error during logout:', error);
-        alert('An error occurred during logout.');
-        window.location.reload(); // Still reload to reset state
+        displayMessage('An error occurred during logout.', 'error');
+        // Still reload to reset state on network error
+        setTimeout(() => window.location.reload(), 500); // Delay for 0.5 seconds
+    } finally {
+        // Re-enable logout button (Optional UI improvement)
+        // const logoutButton = userStatus.querySelector('button');
+        // if (logoutButton) logoutButton.disabled = false;
     }
 }
 
 // --- Initial Check for Login Status ---
 async function checkLoginStatus() {
     console.log('Checking login status...');
+    // displayMessage('Checking login status...', 'info'); // Avoid showing this on every page load
+
     try {
         const response = await fetch('http://127.0.0.1:5000/status', {
             method: 'GET',
@@ -216,48 +479,54 @@ async function checkLoginStatus() {
                 // Browser handles session cookies for authentication
             }
         });
-         const result = await response.json();
+        const result = await response.json();
 
         // Check if logged in and username is available in the response
         if (response.ok && result.is_logged_in && result.username) { // Ensure username is in the response
             console.log('User is logged in:', result.email, 'Username:', result.username);
             showMainApp(result.username); // Pass username to showMainApp
-            // Load history for the logged-in user (no delay needed here, it's on page load)
-            loadHistory();
+            // Load history for the logged-in user with initial filters (which will be empty)
+            applyHistoryFilters(); // Use this function to load with initial filters
         } else {
             console.log('User is not logged in.');
             showAuthButtons(); // Show authentication options
+            // Display message only if not already showing a login/registration form
+            if (loginForm.style.display === 'none' && registerForm.style.display === 'none') {
+                displayMessage('Please log in or register to use the fraud detection system.', 'info');
+            }
         }
     } catch (error) {
-        // Handle network errors or issues before response
         console.error('Network error checking login status:', error);
-         // Assume not logged in or backend is down
+        // Assume not logged in or backend is down on network error
         showAuthButtons();
-        // Optionally, display a message indicating backend connection issue
-        // alert('Could not connect to the backend. Please try again later.');
+        displayMessage('Could not connect to the backend. Please ensure the backend server is running.', 'error');
     }
 }
 
 
 // --- Analysis Functions (Backend API Calls handled by app.py save) ---
-// These functions now just trigger the analysis on the backend.
-// The backend handles saving the history for the logged-in user.
 
 async function analyzeUrl() {
-    const url = urlInput.value;
+    if (!urlInput) {
+        console.error('URL Input element not found!');
+        displayMessage('Error: URL input field missing.', 'error');
+        return;
+    }
+    const url = urlInput.value.trim(); // Trim whitespace
     if (!url) {
-        alert('Please enter a URL.');
+        displayMessage('Please enter a URL.', 'warning');
         return;
     }
 
-    // Analysis routes on backend are protected by @login_required.
-    // If the user is not logged in, the backend will return 302 (redirect to login),
-    // which the browser follows. The subsequent GET to /login results in 405.
-    // We need to handle the response status from the FINAL request after redirects.
-
     console.log('Analyzing URL:', url);
+    displayMessage('Analyzing URL...', 'info');
+    // Disable analyze button while processing?
+    // const analyzeUrlButton = urlInput.nextElementSibling; // Assuming button is next sibling
+    // if (analyzeUrlButton && analyzeUrlButton.tagName === 'BUTTON') analyzeUrlButton.disabled = true;
+
+
     // Clear previous results while analyzing
-    urlResultCard.style.display = 'none';
+    if (urlResultCard) urlResultCard.style.display = 'none';
 
 
     try {
@@ -265,47 +534,72 @@ async function analyzeUrl() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                 // Browser handles session cookies for authentication
+                // Browser handles session cookies for authentication
             },
             body: JSON.stringify({ url: url })
         });
 
-        // Fetch API follows 302 redirects. We need to check the status of the final response.
-        // If Flask-Login redirected, the final response might be from GET /login (405) or the login page itself.
+        // Handle specific non-OK statuses first (like auth issues from Flask-Login redirect)
+        if (response.status === 401) {
+            displayMessage('Please log in to analyze URLs.', 'error');
+            showAuthButtons();
+            return; // Stop execution
+        }
+        if (response.status === 405) {
+            // This can happen if Flask-Login redirects a POST to a GET login route
+            displayMessage('Analysis failed due to login issue. Please log in again.', 'error');
+            console.error('URL Analysis Error: Likely Flask-Login redirect (405)');
+            showAuthButtons();
+            return; // Stop execution
+        }
 
-        if (response.ok) { // Status 200-299 from the FINAL response (should be from /analyze-url)
+
+        if (response.ok) { // Status 200-299 means success
             const result = await response.json();
             console.log('URL Analysis Result:', result);
-            updateUrlResult(result);
-            // History saving is handled by the backend /analyze-url route
-            // After a successful analysis that is saved, reload the history section.
-             loadHistory(); // Reload history immediately
+            updateUrlResult(result); // <--- This displays the result in the card
 
-        } else if (response.status === 401) { // If Flask-Login was configured to return 401 instead of 302
-            alert('Please log in to analyze URLs.');
-            showAuthButtons(); // Redirect or show login form
-        }
-         else if (response.status === 405) { // Handle the 405 Method Not Allowed from the redirect to GET /login
-             alert('Analysis failed. Please ensure you are logged in.');
-             console.error('URL Analysis Error: Redirected to Login (405)', response.status, response.statusText);
-             // The user was likely redirected because they weren't logged in or session expired.
-             showAuthButtons(); // Show auth buttons as they are likely not logged in
-        }
-        else { // Handle other error statuses (e.g., 500 from /analyze-url itself)
-             const errorResult = await response.json().catch(() => ({ error: 'Could not parse error response from backend' }));
-             alert('Analysis failed: ' + (errorResult.error || response.statusText));
-             console.error('URL Analysis Error:', response.status, errorResult);
+            // --- Check for save error flag from backend ---
+            if (result.save_error) {
+                displayMessage('URL analysis complete, but results could not be saved to history.', 'warning');
+                console.warn('Backend reported save error for URL:', url, result);
+                // Do NOT reload history if saving failed, as the new item isn't there
+            } else {
+                displayMessage('URL analysis complete and saved to history.', 'success');
+                console.log('URL analysis and save successful for URL:', url);
+                // Reload history only if saving was successful
+                applyHistoryFilters();
+            }
+
+        } else { // Handle other error statuses (e.g., 400, 500 from analyze-url itself)
+            const errorText = await response.text(); // Get raw text for potential error message
+            let errorMsg = `URL Analysis failed: Status ${response.status}`;
+            try {
+                const errorResult = JSON.parse(errorText);
+                errorMsg = 'URL Analysis failed: ' + (errorResult.error || errorText);
+            } catch (e) {
+                errorMsg = 'URL Analysis failed: ' + errorText;
+            }
+            displayMessage(errorMsg, 'error');
+            console.error('URL Analysis Error:', response.status, errorText);
         }
 
     } catch (error) {
         console.error('Network error during URL analysis:', error);
-        alert('An error occurred during URL analysis.');
+        displayMessage('An error occurred during URL analysis. Please check backend connection.', 'error');
+    } finally {
+        // Re-enable analyze button (Optional UI improvement)
+        // const analyzeUrlButton = urlInput.nextElementSibling;
+        // if (analyzeUrlButton && analyzeUrlButton.tagName === 'BUTTON') analyzeUrlButton.disabled = false;
     }
 }
 
 async function analyzeQR(input) {
-     // Analysis routes on backend are protected by @login_required.
-     // Handle redirect/405 like analyzeUrl.
+    if (!qrInput) {
+        console.error('QR Input element not found!');
+        displayMessage('Error: QR input field missing.', 'error');
+        return;
+    }
 
     if (input.files && input.files[0]) {
         const file = input.files[0];
@@ -313,120 +607,235 @@ async function analyzeQR(input) {
         formData.append('file', file);
 
         console.log('Analyzing QR code file:', file.name);
+        displayMessage('Analyzing QR code...', 'info');
+        // Disable relevant UI elements?
+
+
         // Clear previous results while analyzing
-         qrResultCard.style.display = 'none';
+        if (qrResultCard) qrResultCard.style.display = 'none';
 
 
         // Display the uploaded image first for immediate feedback
         const reader = new FileReader();
         reader.onload = function (e) {
-            qrImage.src = e.target.result;
-            qrImageContainer.style.display = 'block';
+            if (qrImageContainer) qrImageContainer.style.display = 'block';
+            if (qrImage) qrImage.src = e.target.result;
         };
         reader.readAsDataURL(file);
-        clearQRButton.disabled = false;
+        if (clearQRButton) clearQRButton.disabled = false;
 
 
         try {
             const response = await fetch('http://127.0.0.1:5000/analyze-qr', {
                 method: 'POST',
                 body: formData,
-                 // Browser handles session cookies for authentication
+                // Browser handles session cookies for authentication
             });
 
-            // Handle 302 redirect -> 405 GET /login like analyzeUrl
-             if (response.ok) { // Status 200-299 from the FINAL response (/analyze-qr)
+            // Handle specific non-OK statuses first
+            if (response.status === 401) {
+                displayMessage('Please log in to analyze QR codes.', 'error');
+                showAuthButtons();
+                clearQR(); // Clear the displayed QR image on auth error
+                return; // Stop execution
+            }
+            if (response.status === 405) {
+                displayMessage('QR analysis failed due to login issue. Please log in again.', 'error');
+                console.error('QR Analysis Error: Likely Flask-Login redirect (405)');
+                showAuthButtons();
+                clearQR(); // Clear the displayed QR image on auth error
+                return; // Stop execution
+            }
+
+            if (response.ok) { // Status 200-299
                 const result = await response.json();
                 console.log('QR Analysis Result:', result);
-                updateQRResult(result);
-                // History saving is handled by the backend /analyze-qr route
-                // After a successful analysis that is saved, reload history
-                 loadHistory(); // Reload history immediately
+                updateQRResult(result); // <--- This displays the result in the card
 
 
-             } else if (response.status === 401) { // If Flask-Login was configured to return 401
-                 alert('Please log in to analyze QR codes.');
-                 showAuthButtons(); // Redirect or show login form
-                 clearQR(); // Clear the displayed QR image on auth error
+                // --- Check for save error flag from backend ---
+                if (result.save_error) {
+                    displayMessage('QR analysis complete, but results could not be saved to history.', 'warning');
+                    console.warn('Backend reported save error for QR:', file.name, result);
+                    // Do NOT reload history if saving failed
+                } else {
+                    displayMessage('QR analysis complete and saved to history.', 'success');
+                    console.log('QR analysis and save successful for QR:', file.name);
+                    // Reload history only if saving was successful
+                    applyHistoryFilters();
+                }
 
-            } else if (response.status === 405) { // Handle the 405 Method Not Allowed from the redirect to GET /login
-                 alert('QR analysis failed. Please ensure you are logged in.');
-                 console.error('QR Analysis Error: Redirected to Login (405)', response.status, response.statusText);
-                 showAuthButtons(); // Show auth buttons as they are likely not logged in
-                 clearQR(); // Clear the displayed QR image on redirect/auth error
-            }
-             else { // Handle other error statuses (e.g., 500 from /analyze-qr itself)
-                 const errorResult = await response.json().catch(() => ({ error: 'Could not parse error response from backend' }));
-                 alert('QR analysis failed: ' + (errorResult.error || response.statusText));
-                 console.error('QR Analysis Error:', response.status, errorResult);
-                // Optionally clear the displayed QR image and disable clear button
-                // clearQR();
+            } else { // Handle other error statuses
+                const errorText = await response.text(); // Get raw text for potential error message
+                let errorMsg = `QR Analysis failed: Status ${response.status}`;
+                try {
+                    const errorResult = JSON.parse(errorText);
+                    errorMsg = 'QR Analysis failed: ' + (errorResult.error || errorText);
+                } catch (e) {
+                    errorMsg = 'QR Analysis failed: ' + errorText;
+                }
+                displayMessage(errorMsg, 'error');
+                console.error('QR Analysis Error:', response.status, errorText);
+                // Keep displayed image/clear button as is for now? Or clear?
             }
 
         } catch (error) {
             console.error('Network error during QR analysis:', error);
-            alert('An error occurred during QR analysis.');
-            // Optionally clear the displayed QR image and disable clear button
-            // clearQR();
+            displayMessage('An error occurred during QR analysis. Please check backend connection.', 'error');
+            // Keep displayed image/clear button as is for now? Or clear?
+        } finally {
+            // Re-enable relevant UI elements?
         }
+    } else {
+        // Handle case where file input change event fired but no file was selected/available
+        console.log('QR input changed, but no file selected.');
+        clearQR(); // Clear any previously displayed image/result
     }
 }
 
 function updateUrlResult(result) {
+    if (!urlResultCard || !confidenceValueSpan || !confidenceBarFill || !riskLevelSpan || !riskFactorsList) {
+        console.error('URL result elements not found! Cannot update result card.');
+        // Optionally hide the card container if elements are missing
+        if (urlResultCard) urlResultCard.style.display = 'none';
+        return;
+    }
     urlResultCard.style.display = 'block';
-    // Use risk level for warning class if not fraud and not low risk
-    urlResultCard.className = `result-card ${result.is_fraud ? 'fraud' : (result.risk_level !== 'Low' ? 'warning' : 'safe')}`;
+    // Use risk level for warning class if not fraud and not low/safe risk
+    // Check result.is_fraud carefully as it might be null/undefined if result JSON was malformed
+    const isFraud = result.is_fraud === true; // Explicitly check against true
+    const riskLevel = result.risk_level || 'Unknown';
 
-    confidenceValueSpan.textContent = `${parseFloat(result.confidence).toFixed(2)}`; // Ensure 2 decimal places
+    let cardClass = 'safe'; // Default to safe styling
+    if (isFraud) {
+        cardClass = 'fraud'; // Red for fraudulent
+    } else if (riskLevel === 'Critical' || riskLevel === 'High' || riskLevel === 'Medium') {
+        cardClass = 'warning'; // Orange/Yellow for higher non-fraud risk
+    }
+    // No change for 'Low' or 'Safe' - they keep the 'safe' styling
+
+    urlResultCard.className = `result-card ${cardClass}`;
+
+
+    confidenceValueSpan.textContent = `${parseFloat(result.confidence || 0).toFixed(2)}`; // Default to 0 if confidence is missing
     // Ensure confidence bar doesn't exceed 100%
-    confidenceBarFill.style.width = `${Math.min(100, parseFloat(result.confidence))}%;`;
+    confidenceBarFill.style.width = `${Math.min(100, parseFloat(result.confidence || 0))}%;`;
 
-    riskLevelSpan.textContent = result.risk_level;
+    riskLevelSpan.textContent = riskLevel;
 
-    riskFactorsList.innerHTML = result.risk_factors.map(factor => `<li>${factor}</li>`).join('');
+    // Ensure risk_factors is an array before mapping
+    const riskFactors = Array.isArray(result.risk_factors) ? result.risk_factors : [];
+    if (riskFactors.length > 0) {
+        riskFactorsList.innerHTML = riskFactors.map(factor => `<li>${factor}</li>`).join('');
+    } else {
+        riskFactorsList.innerHTML = '<li>No specific risk factors identified</li>'; // Provide a default if empty
+    }
 }
 
 function updateQRResult(result) {
-     qrResultCard.style.display = 'block';
-     // Use risk level for warning class if not fraud and not low risk
-    qrResultCard.className = `result-card ${result.is_fraud ? 'fraud' : (result.risk_level !== 'Low' ? 'warning' : 'safe')}`;
+    if (!qrResultCard) {
+        console.error('QR result card element not found! Cannot update QR result.');
+        return;
+    }
+    qrResultCard.style.display = 'block';
 
+    // Determine card class based on result, similar to updateUrlResult
+    const isFraud = result.is_fraud === true; // Explicitly check against true
+    const riskLevel = result.risk_level || 'Unknown';
+    let cardClass = 'safe';
+    if (isFraud) {
+        cardClass = 'fraud';
+    } else if (riskLevel === 'Critical' || riskLevel === 'High' || riskLevel === 'Medium') {
+        cardClass = 'warning';
+    }
+    qrResultCard.className = `result-card ${cardClass}`;
+
+
+    // Ensure all necessary result properties exist before displaying
+    const confidence = result.confidence !== undefined ? parseFloat(result.confidence || 0).toFixed(2) + '%' : 'N/A';
+    const decodedUrl = result.url ? `<p>Decoded URL: <span style="word-break: break-all;">${result.url}</span></p>` : '';
+    // For QR, we might just show the basic details
     qrResultCard.innerHTML = `
-        <h3>Analysis Results</h3>
-        <div class="result-details">
-            <p>Confidence: ${parseFloat(result.confidence).toFixed(2)}%</p>
-            <p>Risk Level: ${result.risk_level}</p>
-            ${result.url ? `<p>Decoded URL: <span style="word-break: break-all;">${result.url}</span></p>` : ''} </div>
-    `;
+         <h3>Analysis Results</h3>
+         <div class="result-details">
+             <p>Confidence: ${confidence}</p>
+             <p>Risk Level: ${riskLevel}</p>
+             ${decodedUrl}
+         </div>
+         <!-- Risk factors for QR can be added here if backend provides them in QR analysis result -->
+         <!-- <h4>Risk Factors:</h4>
+         <ul class="risk-factors">${Array.isArray(result.risk_factors) ? result.risk_factors.map(factor => `<li>${factor}</li>`).join('') : '<li>No specific risk factors identified</li>'}</ul>
+         -->
+     `;
 }
 
 
 function clearQR() {
-    qrImageContainer.style.display = 'none';
-    qrImage.src = ''; // Clear the image source
+    if (qrImageContainer) qrImageContainer.style.display = 'none';
+    if (qrImage) qrImage.src = ''; // Clear the image source
 
-    qrInput.value = ''; // Clear the file input value
+    if (qrInput) qrInput.value = ''; // Clear the file input value
 
-    qrResultCard.style.display = 'none'; // Hide the result card
-    clearQRButton.disabled = true; // Disable clear button again
+    if (qrResultCard) qrResultCard.style.display = 'none'; // Hide the result card
+    if (clearQRButton) clearQRButton.disabled = true; // Disable clear button again
+    // Keep messages related to analysis results, don't clear here
 }
 
 // --- History Management Functions (Backend API Calls) ---
 
-// saveAnalysisHistory is no longer needed as saving is done by backend analysis routes
+async function loadHistory(filters = {}) {
+    console.log('Attempting to load history from backend with filters:', filters);
 
-// Updated loadHistory function with better error messages and no delay needed on initial load
-async function loadHistory() {
-    console.log('Attempting to load history from backend...');
-    historyList.innerHTML = '<li class="history-item">Loading history...</li>'; // Show loading indicator
+    if (!historyList) {
+        console.error('History List element not found for loading!');
+        displayMessage('Error: History list area missing.', 'error');
+        return;
+    }
+
+    // Clear previous history and show loading indicator
+    historyList.innerHTML = '<li class="history-item loading">Loading history...</li>';
+    // displayMessage('Loading history...', 'info'); // Optional: show loading message
+
+
+    // Construct query parameters from the filters object
+    const queryParams = new URLSearchParams();
+    for (const key in filters) {
+        // This check ensures that filters with empty string, null, or undefined values are not appended.
+        // Also skip if the filter value is 'all' explicitly for robustness
+        if (filters[key] !== '' && filters[key] !== null && filters[key] !== undefined && filters[key].toLowerCase() !== 'all') {
+            // Ensure key and value are properly encoded
+            queryParams.append(encodeURIComponent(key), encodeURIComponent(filters[key]));
+        }
+    }
+
+    const fetchUrl = `http://127.0.0.1:5000/history?${queryParams.toString()}`;
+    console.log("Fetching history from:", fetchUrl); // Debugging fetch URL
+
 
     try {
-        const response = await fetch('http://127.0.0.1:5000/history', {
+        const response = await fetch(fetchUrl, {
             method: 'GET',
             headers: {
-                 // Browser handles session cookies for authentication
+                // Browser handles session cookies for authentication
             }
         });
+
+        // Handle specific non-OK statuses first
+        if (response.status === 401) {
+            console.warn('Attempted to load history while not logged in (401).');
+            historyList.innerHTML = '<li class="history-item">Please log in to view history.</li>';
+            // displayMessage('Please log in to view history.', 'warning'); // Optional: warning message
+            showAuthButtons(); // Show auth buttons as user is not logged in
+            return; // Stop execution
+        }
+        if (response.status === 405) {
+            console.error('Failed to load history: Redirected to Login (405). User session may have expired.');
+            historyList.innerHTML = '<li class="history-item error">Failed to load history. Please log in again.</li>'; // Use an error class
+            displayMessage('Failed to load history. Please log in again.', 'error');
+            showAuthButtons(); // Show auth buttons as user is likely not logged in
+            return; // Stop execution
+        }
+
 
         if (response.ok) { // Status 200-299 means success
             const history = await response.json(); // Assuming backend returns a list of history items
@@ -435,251 +844,459 @@ async function loadHistory() {
             historyList.innerHTML = ''; // Clear loading indicator/previous content
 
             if (history && history.length > 0) {
-                 history.forEach(item => {
-                    // Format item from backend response to match expected structure for addHistoryItemToUI
+                history.forEach(item => {
                     // Backend structure: { id, user_id, item_type, item_data, analysis_result, analyzed_at }
+                    // Use the structure directly as passed from backend
                     const formattedItem = {
-                         db_id: item.id, // Store the database ID for deletion
-                         type: item.item_type,
-                         data: item.item_data,
-                         // If your backend returns qrDataUrl, use it here:
-                         // qrDataUrl: item.analysis_result?.qrDataUrl || null,
-                         qrDataUrl: null, // Assuming not returned currently
-
-                         result: item.analysis_result // Use the parsed JSON result directly
+                        db_id: item.id,
+                        type: item.item_type,
+                        data: item.item_data,
+                        result: item.analysis_result, // Use the parsed JSON result directly
+                        analyzed_at: item.analyzed_at // This should be the timestamp string from the backend
                     };
                     addHistoryItemToUI(formattedItem);
-                 });
+                });
+                // displayMessage('History loaded successfully.', 'success'); // Avoid spamming
             } else {
-                console.log('No history found for this user.');
-                historyList.innerHTML = '<li class="history-item">No history yet. Analyze something!</li>'; // Display "No history yet"
+                console.log('No history found for this user with applied filters.');
+                historyList.innerHTML = '<li class="history-item">No history found matching the filters.</li>'; // Display "No history yet"
+                // displayMessage('No history found.', 'info'); // Avoid spamming
             }
 
-        } else if (response.status === 401) {
-             // This case might be hit if Flask-Login returns 401 instead of 302 redirect
-             console.warn('Attempted to load history while not logged in (401).');
-             historyList.innerHTML = '<li class="history-item">Please log in to view history.</li>';
-             // showAuthButtons(); // Showing auth buttons is handled by checkLoginStatus on reload
-        } else if (response.status === 405) {
-             // This case is hit after the 302 redirect to GET /login
-              console.error('Failed to load history: Redirected to Login (405). User session may have expired.');
-              historyList.innerHTML = '<li class="history-item">Failed to load history. Please log in again.</li>';
-              // showAuthButtons(); // Showing auth buttons is handled by checkLoginStatus on reload
-        }
-         else { // Handle other error statuses (e.g., 500 Internal Server Error from /history itself)
-            // Try parsing JSON, fallback if not JSON - This is more robust error handling
-            const errorResult = await response.json().catch(() => ({ error: 'Could not parse error response from backend' }));
-            console.error('Failed to load history:', response.status, errorResult);
-            historyList.innerHTML = `<li class="history-item">Error loading history: ${errorResult.error || `Status ${response.status}`}</li>`; // Display specific error message
+        } else { // Handle other error statuses (e.g., 500 from /history itself)
+            const errorText = await response.text(); // Get raw text for potential error message
+            let errorMsg = `Error loading history: Status ${response.status}`;
+            try {
+                const errorResult = JSON.parse(errorText);
+                errorMsg = 'Error loading history: ' + (errorResult.error || errorText);
+            } catch (e) {
+                errorMsg = 'Error loading history: ' + errorText;
+            }
+            console.error('Failed to load history:', response.status, errorText);
+            historyList.innerHTML = `<li class="history-item error">${errorMsg}</li>`; // Display specific error message with error styling
+            displayMessage(errorMsg, 'error');
         }
     } catch (error) { // Handle network errors or issues before response
         console.error('Network error loading history:', error);
-        historyList.innerHTML = '<li class="history-item">Network error while loading history.</li>'; // More specific network error
+        historyList.innerHTML = '<li class="history-item error">Network error while loading history. Please check backend connection.</li>'; // More specific network error
+        displayMessage('Network error while loading history.', 'error');
     }
 }
 
 // Helper function to add a history item to the UI list
 function addHistoryItemToUI(item) {
+    if (!historyList) {
+        console.error('History List element not found for adding item!');
+        return;
+    }
+
     const listItem = document.createElement('li');
     listItem.className = 'history-item';
-    // Store the database ID on the list item element itself for easy access during deletion
+    // Store the database ID on the list item element itself
     if (item.db_id) {
         listItem.dataset.historyId = item.db_id;
     }
 
+    // Get analysis result details safely
+    const analysisResult = item.result || {};
+    // Use riskLevel string for badge text and class determination
+    const riskLevel = analysisResult.risk_level || 'Unknown';
+
 
     const statusBadge = document.createElement('span');
-    // Ensure item.result exists before accessing its properties
-    const isFraud = item.result ? item.result.is_fraud : false;
-    statusBadge.className = `status-badge ${isFraud ? 'fraud' : 'safe'}`;
-    statusBadge.textContent = isFraud ? 'Fraudulent' : 'Safe';
+    let badgeClass = 'info'; // Default to 'info'
+    let badgeText = riskLevel; // Badge text is the riskLevel string
+
+
+    // --- MODIFIED BADGE LOGIC: Rely only on riskLevel string for badge appearance ---
+    switch (riskLevel) {
+        case 'Critical':
+        case 'High':
+            badgeClass = 'warning'; // Use warning class for High/Critical
+            badgeText = riskLevel; // Text is Critical or High
+            break;
+        case 'Medium':
+            badgeClass = 'warning'; // Use warning class for Medium
+            badgeText = riskLevel; // Text is Medium
+            break;
+        case 'Low':
+        case 'Safe':
+            badgeClass = 'safe'; // Green
+            badgeText = riskLevel; // Text is Low or Safe
+            break;
+        case 'Fraudulent': // Handle "Fraudulent" if backend explicitly sends this as risk_level
+             badgeClass = 'fraud'; // Red
+             badgeText = 'Fraudulent'; // Text is Fraudulent
+             break;
+        default: // Handles 'Unknown', 'Error', or any other unexpected value
+            // Fallback: If riskLevel is unknown/error, *then* check the is_fraud flag as a secondary indicator
+            const isFraudFallback = analysisResult.is_fraud === true;
+            if (isFraudFallback) {
+                 badgeClass = 'fraud'; // If marked is_fraud:true but risk_level is strange, show fraud
+                 badgeText = 'Fraudulent (Unknown Level)'; // Indicate the ambiguity
+            } else {
+                 badgeClass = 'info'; // Default for truly unknown/error
+                 badgeText = riskLevel; // Text is Unknown, Error, etc.
+            }
+            break;
+    }
+     // --- END MODIFIED BADGE LOGIC ---
+
+
+    statusBadge.className = `status-badge ${badgeClass}`;
+    statusBadge.textContent = badgeText;
 
     const deleteButton = document.createElement('button');
     deleteButton.className = 'delete-history-item';
-    deleteButton.innerHTML = '&#10060;'; // Unicode cross character
+    deleteButton.innerHTML = '❌'; // Unicode cross character
     deleteButton.title = 'Remove from history';
 
-    // Attach the delete logic
     deleteButton.onclick = async function () {
         const historyId = listItem.dataset.historyId;
         if (historyId && confirm('Are you sure you want to remove this item from history?')) {
             const deleted = await deleteHistoryItem(historyId);
             if (deleted) {
                 // Remove the item from the UI list only on backend success
-                historyList.removeChild(listItem);
-                console.log(`Removed history item ${historyId} from UI.`);
+                if (historyList.contains(listItem)) {
+                    historyList.removeChild(listItem);
+                    console.log(`Removed history item ${historyId} from UI.`);
+                    displayMessage('History item deleted.', 'success');
+                }
             } else {
-                // Error message is shown by deleteHistoryItem, no extra alert here
+                // Error message is shown by deleteHistoryItem
             }
         } else if (!historyId) {
             console.error('History item missing database ID, cannot delete.');
-            alert('Cannot delete this history item (ID not found).');
+            displayMessage('Cannot delete this history item (ID not found).', 'error');
         }
     };
 
+    // --- MODIFIED: Include item data and timestamp in a flex container ---
+    // Create a span to hold the item data and timestamp
+    const itemInfo = document.createElement('span');
+    itemInfo.style.flexGrow = '1'; // Allow this part to take up space
+    itemInfo.style.marginRight = '10px'; // Add spacing before badge/delete button
+    itemInfo.style.wordBreak = 'break-word'; // Allow wrapping within this span
+    itemInfo.style.overflowWrap = 'break-word'; // Also allow wrapping (modern browsers)
 
-    let itemContentHtml = `<span>${item.data}</span>`;
+    // Create spans for item data and timestamp within itemInfo
+    const dataSpan = document.createElement('span');
+    dataSpan.textContent = item.data;
+    dataSpan.style.display = 'block'; // Make it a block element so timestamp appears below or wraps properly
+    dataSpan.style.wordBreak = 'break-word'; // Ensure long words break
+    dataSpan.style.overflowWrap = 'break-word'; // Ensure long words break
 
-    // Add QR image preview if available and you want to display it in history list
-    // This requires the backend /history endpoint to return the QR image data URL,
-    // or you need another endpoint to generate it from item.item_data.
-    // For now, assuming qrDataUrl might not be directly available in the history list fetch.
-    // if (item.type === 'qr' && item.qrDataUrl) {
-    //     itemContentHtml += `<img src="${item.qrDataUrl}" alt="QR Code Preview" style="width: 30px; height: 30px; vertical-align: middle; margin-left: 10px; cursor: pointer;" onclick="showQrPreview('${item.qrDataUrl}')" title="View QR Code">`;
-    // }
+    itemInfo.appendChild(dataSpan);
 
-    listItem.innerHTML = itemContentHtml; // Set the content first
-    listItem.appendChild(statusBadge); // Append badge
-    // Only add delete button if the item has a database ID
+    // Check if analyzed_at exists and is valid
+    if (item.analyzed_at) {
+        try {
+            // Create a Date object from the timestamp string
+            const date = new Date(item.analyzed_at);
+            // Check if Date object is valid (handle potential parsing issues)
+            if (!isNaN(date.getTime())) {
+                // Format the date/time nicely
+                const formattedDate = date.toLocaleString();
+
+                const timestampSpan = document.createElement('span');
+                timestampSpan.className = 'history-timestamp'; // Apply timestamp class
+                timestampSpan.textContent = formattedDate;
+                 timestampSpan.style.display = 'block'; // Make timestamp a block
+                 timestampSpan.style.marginTop = '3px'; // Space above timestamp
+
+                itemInfo.appendChild(timestampSpan); // Append timestamp span to itemInfo
+            } else {
+                console.warn(`Could not parse date for history item ${item.db_id}: ${item.analyzed_at}`);
+                const timestampSpan = document.createElement('span');
+                timestampSpan.className = 'history-timestamp';
+                timestampSpan.textContent = 'Invalid Date';
+                 timestampSpan.style.display = 'block';
+                 timestampSpan.style.marginTop = '3px';
+                itemInfo.appendChild(timestampSpan);
+            }
+        } catch (e) {
+            console.error(`Error processing date for history item ${item.db_id}: ${e}`, item.analyzed_at);
+            const timestampSpan = document.createElement('span');
+            timestampSpan.className = 'history-timestamp';
+            timestampSpan.textContent = 'Error';
+            timestampSpan.style.display = 'block';
+            timestampSpan.style.marginTop = '3px';
+            itemInfo.appendChild(timestampSpan);
+        }
+    }
+    // --- END MODIFIED ---
+
+
+    // Append the item info span, badge, and delete button to the list item
+    listItem.appendChild(itemInfo); // Append the new container span
+    listItem.appendChild(statusBadge);
     if (item.db_id) {
         listItem.appendChild(deleteButton);
     }
 
-
     // Add the new item to the top of the list
     historyList.insertBefore(listItem, historyList.firstChild);
 }
-
 async function deleteHistoryItem(item_id) {
     console.log('Attempting to delete history item with ID:', item_id);
-    // Delete route is protected by @login_required. Handle 302 redirect -> 405 like analyzeUrl
+    displayMessage('Deleting history item...', 'info');
 
     try {
         const response = await fetch(`http://127.0.0.1:5000/delete-history-item/${item_id}`, {
             method: 'DELETE',
             headers: {
-                 // Browser handles session cookies for authentication
+                // Browser handles session cookies for authentication
             }
         });
 
         if (response.ok) { // Status 200-299 means success from the FINAL response (/delete-history-item)
             const result = await response.json();
-             if (result.success) {
-                console.log('History item deleted successfully from backend.');
-                // After successful deletion, reload history
-                 loadHistory(); // Reload history immediately
+            if (result.success) {
+                console.log('History item deleted successfully:', item_id);
+                // UI removal is handled in addHistoryItemToUI's deleteButton onclick
                 return true; // Indicate success
-             } else {
-                 // Backend returned 200 but success was false (e.g., item not found or not owned by user)
-                 console.error('Failed to delete history item:', result.error || 'Unknown reason');
-                 alert('Failed to delete history item: ' + (result.error || 'Unknown reason'));
-                 return false;
-             }
+            } else {
+                const errorMsg = result.error || 'Unknown error';
+                console.error('Backend reported failed deletion:', errorMsg);
+                displayMessage('Failed to delete history item: ' + errorMsg, 'error');
+                return false; // Indicate failure
+            }
 
-        } else if (response.status === 401) { // If Flask-Login returned 401
-            alert('Please log in to delete history.');
+        } else if (response.status === 401) {
+            displayMessage('Please log in to delete history items.', 'error');
             showAuthButtons(); // Redirect or show login form
             return false;
-        } else if (response.status === 404) { // Backend explicitly returned 404
-            const errorResult = await response.json().catch(() => ({ error: 'Not Found' }));
-            console.error('Failed to delete history item:', response.status, errorResult);
-            alert(`Failed to delete history item: ${errorResult.error || `Status ${response.status}`}`);
+        }
+        else if (response.status === 404) {
+            console.error('History item not found on backend:', item_id);
+            displayMessage('Failed to delete: Item not found.', 'error');
             return false;
         }
-        else if (response.status === 405) { // Handle the 405 Method Not Allowed from the redirect to GET /login
-             alert('Failed to delete history item. Please log in again.');
-             console.error('Delete History Error: Redirected to Login (405)', response.status, response.statusText);
-             showAuthButtons(); // Show auth buttons as they are likely not logged in
-             return false;
-        }
-        else { // Handle other error statuses (e.g., 500 from /delete-history-item itself)
-            const errorResult = await response.json().catch(() => ({ error: 'Could not parse error response from backend' }));
-            console.error('Failed to delete history item:', response.status, errorResult);
-            alert(`Failed to delete history item: ${errorResult.error || `Status ${response.status}`}`);
+        else if (response.status === 405) {
+            console.error('Delete History Error: Redirected to Login (405).', response.status, response.statusText);
+            displayMessage('Failed to delete. Please log in again.', 'error');
+            showAuthButtons();
             return false;
         }
-    } catch (error) { // Handle network errors or issues before response
-        console.error('Network error deleting history item:', error);
-        alert('A network error occurred while deleting history item.');
+        else { // Handle other error statuses
+            const errorText = await response.text();
+            let errorMsg = `Failed to delete history item: Status ${response.status}`;
+            try {
+                const errorResult = JSON.parse(errorText);
+                errorMsg = 'Failed to delete history item: ' + (errorResult.error || errorText);
+            } catch (e) {
+                errorMsg = 'Failed to delete history item: ' + errorText;
+            }
+            console.error('Failed to delete history item:', response.status, errorText);
+            displayMessage(errorMsg, 'error');
+            return false; // Indicate failure
+        }
+    } catch (error) {
+        console.error('Network error during deletion:', error);
+        displayMessage('An error occurred during deletion. Please check backend connection.', 'error');
         return false; // Indicate failure
     }
 }
 
 
 async function clearHistory() {
-    console.log('Attempting to clear history from backend...');
-    // Clear history route is protected by @login_required. Handle 302 redirect -> 405 like analyzeUrl
+    if (!historyList) {
+        console.error('History List element not found for clearing!');
+        displayMessage('Error: History list area missing.', 'error');
+        return;
+    }
 
-    if (confirm('Are you sure you want to clear all your analysis history?')) {
-        try {
-            const response = await fetch('http://127.0.0.1:5000/clear-history', {
-                method: 'POST',
-                headers: {
-                     // Browser handles session cookies for authentication
-                }
-            });
+    if (!confirm('Are you sure you want to clear all your history? This cannot be undone.')) {
+        return; // User cancelled
+    }
 
-            if (response.ok) { // Status 200-299 means success from the FINAL response (/clear-history)
-                const result = await response.json();
-                if (result.success) {
-                    console.log('History cleared successfully from backend.');
-                    historyList.innerHTML = ''; // Clear the UI list on success
-                } else {
-                    // Backend returned 200 but success was false
-                    console.error('Failed to clear history:', result.error || 'Unknown reason');
-                    alert('Failed to clear history: ' + (result.error || 'Unknown reason'));
-                }
-            } else if (response.status === 401) { // If Flask-Login returned 401
-                alert('Please log in to clear history.');
-                showAuthButtons(); // Redirect or show login form
-            } else if (response.status === 405) { // Handle the 405 Method Not Allowed from the redirect to GET /login
-                 alert('Failed to clear history. Please log in again.');
-                 console.error('Clear History Error: Redirected to Login (405)', response.status, response.statusText);
-                 showAuthButtons(); // Show auth buttons as they are likely not logged in
-            }
-            else { // Handle other error statuses (e.g., 500 from /clear-history itself)
-                 const errorResult = await response.json().catch(() => ({ error: 'Could not parse error response from backend' }));
-                 console.error('Failed to clear history:', response.status, errorResult);
-                 alert(`Failed to clear history: ${errorResult.error || `Status ${response.status}`}`);
-            }
-        } catch (error) { // Handle network errors or issues before response
-            console.error('Network error clearing history:', error);
-            alert('A network error occurred while clearing history.');
+    console.log('Attempting to clear all history...');
+    displayMessage('Clearing history...', 'info');
+
+    try {
+        // Disable clear history button? (Optional UI improvement)
+        // if (clearHistoryButton) clearHistoryButton.disabled = true;
+
+        const response = await fetch('http://127.0.0.1:5000/clear-history', {
+            method: 'POST', // Or DELETE, depending on your backend design
+            headers: {
+                'Content-Type': 'application/json',
+                // Browser handles session cookies for authentication
+            },
+            // Body might be empty or contain user confirmation, depends on backend
+            body: JSON.stringify({})
+        });
+
+        // Handle specific non-OK statuses first
+        if (response.status === 401) {
+            displayMessage('Please log in to clear history.', 'error');
+            showAuthButtons();
+            return; // Stop execution
         }
+        if (response.status === 405) {
+            displayMessage('Clear history failed due to login issue. Please log in again.', 'error');
+            console.error('Clear History Error: Likely Flask-Login redirect (405)');
+            showAuthButtons();
+            return; // Stop execution
+        }
+
+
+        if (response.ok) { // Status 200-299
+            const result = await response.json();
+            if (result.success) {
+                console.log('History cleared successfully');
+                displayMessage('All history cleared.', 'success');
+                historyList.innerHTML = '<li class="history-item">History cleared.</li>'; // Clear UI list immediately
+                // No need to reload history after clearing, the list is intentionally empty
+            } else {
+                const errorMsg = result.error || 'Unknown error';
+                console.error('Backend reported failed clearing:', errorMsg);
+                displayMessage('Failed to clear history: ' + errorMsg, 'error');
+                // Leave existing history visible if clearing failed? Or show error message in list?
+                historyList.innerHTML = `<li class="history-item error">${errorMsg}</li>`;
+            }
+        } else { // Handle other error statuses
+            const errorText = await response.text();
+            let errorMsg = `Failed to clear history: Status ${response.status}`;
+            try {
+                const errorResult = JSON.parse(errorText);
+                errorMsg = 'Failed to clear history: ' + (errorResult.error || errorText);
+            } catch (e) {
+                errorMsg = 'Failed to clear history: ' + errorText;
+            }
+            console.error('Failed to clear history:', response.status, errorText);
+            historyList.innerHTML = `<li class="history-item error">${errorMsg}</li>`;
+            displayMessage(errorMsg, 'error');
+        }
+    } catch (error) {
+        console.error('Network error during history clearing:', error);
+        displayMessage('An error occurred while clearing history. Please check backend connection.', 'error');
+        historyList.innerHTML = '<li class="history-item error">Network error while clearing history. Please check backend connection.</li>';
+    } finally {
+        // Re-enable clear history button?
+        // if (clearHistoryButton) clearHistoryButton.disabled = false;
     }
 }
 
 
-// --- Event Listeners ---
+// --- Initial Setup and Event Listeners ---
 document.addEventListener('DOMContentLoaded', function () {
+    const modeToggle = document.getElementById('mode-toggle');
+    const body = document.body;
+
+    // Load saved mode from localStorage
+    let currentMode = localStorage.getItem('mode') || 'light'; // Default to light
+    body.classList.add(currentMode + '-mode'); // Apply initial mode
+
+    // Toggle Mode
+    modeToggle.addEventListener('click', function () {
+        if (body.classList.contains('light-mode')) { // Check current state based on class
+            currentMode = 'dark';
+        } else {
+            currentMode = 'light';
+        }
+
+        // Toggle the class on the body
+        body.classList.remove('light-mode', 'dark-mode'); // Remove both classes
+        body.classList.add(currentMode + '-mode'); // Add the current mode's class
+
+        // Save mode to localStorage
+        localStorage.setItem('mode', currentMode);
+    });
+
     // On load, check if the user is already logged in
     checkLoginStatus();
 
     // Ensure clear QR is disabled initially
-    clearQRButton.disabled = true;
+    if (clearQRButton) {
+        clearQRButton.disabled = true;
+    } else {
+        console.error('Clear QR button not found!');
+    }
+
 
     // Add event listeners to the login/register toggle spans within auth cards
-    document.querySelector('#login-form .toggle-form span').onclick = showRegisterForm;
-    document.querySelector('#register-form .toggle-form span').onclick = showLoginForm;
+    const loginToggleSpan = document.querySelector('#login-form .toggle-form span');
+    if (loginToggleSpan) {
+        loginToggleSpan.onclick = showRegisterForm;
+    } else {
+        console.error('Login toggle span not found!');
+    }
+
+    const registerToggleSpan = document.querySelector('#register-form .toggle-form span');
+    if (registerToggleSpan) {
+        registerToggleSpan.onclick = showLoginForm;
+    } else {
+        console.error('Register toggle span not found!');
+    }
+
 
     // Ensure buttons in header also call show functions
-    document.getElementById('show-login').onclick = showLoginForm;
-    document.getElementById('show-register').onclick = showRegisterForm;
+    const showLoginButton = document.getElementById('show-login');
+    if (showLoginButton) {
+        showLoginButton.onclick = showLoginForm;
+    } else {
+        console.error('Show Login button not found!');
+    }
+
+    const showRegisterButton = document.getElementById('show-register');
+    if (showRegisterButton) {
+        showRegisterButton.onclick = showRegisterForm;
+    } else {
+        console.error('Show Register button not found!');
+    }
+
 
     // Note: Login/Register button clicks call the login/register functions directly via onclick in HTML
 
     // Add event listener for the clear history button
-    // We already selected it by ID at the top: const clearHistoryButton = document.getElementById('clear-history-button');
     if (clearHistoryButton) {
         clearHistoryButton.onclick = clearHistory;
     } else {
         console.error('Clear History button not found!');
     }
-});
 
-// Ensure QR input change still triggers analyzeQR
-if (qrInput) {
-    qrInput.onchange = function () { analyzeQR(this); };
-} else {
-    console.error('QR Input element not found!');
-}
+    // Ensure QR input change still triggers analyzeQR
+    if (qrInput) {
+        qrInput.onchange = function () { analyzeQR(this); };
+    } else {
+        console.error('QR Input element not found!');
+    }
+
+    // --- Event Listeners for History Filtering and Export ---
+    if (applyFiltersButton) {
+        applyFiltersButton.addEventListener('click', applyHistoryFilters);
+    } else {
+        console.error('Apply Filters button not found!');
+    }
+
+    if (exportHistoryButton) {
+        exportHistoryButton.addEventListener('click', exportHistory);
+        // Check if already logged in to enable export on load
+        // This check needs to be done after checkLoginStatus resolves
+        // For now, ensure it's enabled by default if button exists.
+        exportHistoryButton.disabled = false;
+        exportHistoryButton.title = "Export filtered history to CSV";
+    } else {
+        console.error('Export History button not found!');
+    }
+
+    // Optional: Apply filters automatically when filter values change
+    // if (filterTypeSelect) filterTypeSelect.addEventListener('change', applyHistoryFilters);
+    // if (filterRiskSelect) filterRiskSelect.addEventListener('change', applyHistoryFilters);
+
+});
 
 
 // Attach functions to global window object so they can be called from HTML onclick attributes
+// Functions called directly from HTML onclick MUST be attached to window or defined globally
 window.register = register;
 window.login = login;
 window.logout = logout;
 window.analyzeUrl = analyzeUrl;
+window.analyzeQR = analyzeQR;
 window.clearQR = clearQR;
-// No need to expose deleteHistoryItem or clearHistory directly as they are called by handlers
-// window.clearHistory = clearHistory;
+window.applyHistoryFilters = applyHistoryFilters;
+window.exportHistory = exportHistory;
+
+// REMOVED the manual fetch block that was at the end

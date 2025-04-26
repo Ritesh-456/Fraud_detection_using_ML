@@ -1,5 +1,8 @@
+# D:\Projects\Fraud Detection using ML\Fraud_detection_using_ML\list_users.py
+
 import sqlite3
 import os
+import sys # Import sys for printing to stderr
 
 # Get the directory where this script is located
 current_script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -13,7 +16,7 @@ db_path = os.path.join(project_root, 'database', 'database.db')
 # current_script_dir = os.path.dirname(os.path.abspath(__file__))
 # project_root = os.path.dirname(current_script_dir) # Go up one level from 'Python scripts'
 # db_path = os.path.join(project_root, 'database', 'database.db')
-print(f"Attempting to connect to: {db_path}") # Optional: uncomment to verify the path
+print(f"Attempting to connect to: {db_path}", file=sys.stderr) # Optional: uncomment to verify the path
 
 
 conn = None
@@ -35,11 +38,11 @@ try:
         print("No users found in the database.")
 
 except sqlite3.Error as e:
-    print(f"Database error: {e}")
+    print(f"Database error: {e}", file=sys.stderr)
 except FileNotFoundError:
-     print(f"Error: Database file not found at {db_path}")
+     print(f"Error: Database file not found at {db_path}", file=sys.stderr)
 except Exception as e:
-    print(f"An unexpected error occurred: {e}")
+    print(f"An unexpected error occurred: {e}", file=sys.stderr)
 finally:
     if conn:
         conn.close()

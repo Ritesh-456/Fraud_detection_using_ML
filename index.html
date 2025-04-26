@@ -15,7 +15,7 @@
             <p>Analyze URLs and QR codes for potential fraud</p>
             <div id="auth-section" class="auth-section">
                 <button class="button-small" id="mode-toggle">Toggle Mode</button>
-        
+
                 <div id="user-status" style="display: none;">
                     Welcome, <strong id="user-identifier"></strong>! <button class="button-small" onclick="logout()">Logout</button>
                 </div>
@@ -25,6 +25,10 @@
                 </div>
             </div>
         </header>
+
+        <!-- New: Message Display Area -->
+        <!-- Add basic styling for .message, .message.info, .message.success, .message.warning, .message.error in style.css -->
+        <div id="message-area" class="message-area"></div>
 
         <div id="login-form" class="card auth-card" style="display: none;">
             <h2>Login</h2>
@@ -103,6 +107,37 @@
 
             <div class="card">
                 <h2>Analysis History</h2>
+
+                <!-- History Filtering and Export Controls -->
+                <div id="history-controls" class="history-controls">
+                    <div class="filter-group">
+                        <label for="filter-type">Type:</label>
+                        <select id="filter-type">
+                            <option value="">All Types</option>
+                            <option value="url">URL</option>
+                            <option value="qr">QR Code</option>
+                        </select>
+                    </div>
+                     <div class="filter-group">
+                        <label for="filter-risk">Risk:</label>
+                        <!-- Updated Risk filter options -->
+                        <select id="filter-risk">
+                            <option value="">All Risks</option>
+                            <option value="is_fraud_true">Fraudulent</option>
+                            <option value="is_fraud_false">Not Fraudulent</option>
+                            <option value="risk_Critical">Critical</option>
+                            <option value="risk_High">High</option>
+                            <option value="risk_Medium">Medium</option>
+                            <option value="risk_Low">Low</option>
+                            <option value="risk_Safe">Safe</option>
+                        </select>
+                    </div>
+                    <!-- Add more filter options here (e.g., date range, search) -->
+                    <button class="button-small" id="apply-filters-button">Apply Filters</button>
+                    <button class="button-small" id="export-history-button">Export History</button>
+                </div>
+
+
                 <ul class="history-list" id="history-list">
                     </ul>
                 <button class="button" id="clear-history-button" onclick="clearHistory()">Clear History</button>

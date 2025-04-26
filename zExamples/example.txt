@@ -11,10 +11,34 @@ test_urls = [
     "http://netflix-payment-issue.xyz/fix",          # fake Netflix phishing
 ]
 
+test_url2 =[
+    Safe (Likely is_fraud: false, High Confidence, risk_level: 'Safe')=[
+        https://www.google.com (Standard, well-known secure site)
+        https://www.wikipedia.org/wiki/Main_Page (Another standard, secure site)
+        https://github.com/your-username/your-repo (Legitimate structure, HTTPS)
+    ]   
+    Low Risk (Likely is_fraud: false, potentially lower confidence,risk_level: 'Low') = [
+        https://example.site/safe-page (Uses a slightly less common TLD '.site', but otherwise benign structure, HTTPS)
+        https://www.legit-blog.net/post-12345 (Legitimate TLD, numbers in path)
+        https://my-company.info/about-us (Uses '.info' TLD, still looks safe)
+    ]
+    Medium Risk (Could be is_fraud: false with lower confidence and some suspicious heuristics, or borderline prediction, risk_level: 'Medium') = [
+        https://secureloginform.org/verify-account (Keywords 'login', 'verify', 'account', but HTTPS and a seemingly valid TLD. The keywords might trigger heuristics even if the model isn't highly confident of fraud.)
+        https://customer-update.online/billing-details (Keywords 'update', TLD '.online' is sometimes used for phishing, but HTTPS. This combination often lands in Medium.)
+        http://www.example.com/login (Uses HTTP but is a known domain. The HTTP and 'login' keyword might increase risk to Medium from Safe.)
+    ]
+    High / Critical Risk (Likely is_fraud: true, Higher Confidence, risk_level: 'High' or 'Critical') = [
+        http://malicious-site.win/free-money (HTTP, suspicious TLD '.win', keywords 'free', 'money')
+        http://192.168.1.100/admin-login (IP address instead of domain, HTTP, keyword 'login')
+        https://secure.bank.update.club/verify (Multiple suspicious subdomains/keywords, suspicious TLD '.club', even though it's HTTPS. The density of suspicious elements should push this towards High/Critical.)
+        http://temp-offer.xyz//claim (HTTP, suspicious TLD '.xyz', double slash //, keywords 'temp', 'offer', 'claim')
+    ]
+]
 # username = honeyboy
+# username = honeygirl
 # login email = test@gmail.com
+# login email = testc@gmail.com
 # password = 1234512345
-# app.config['SECRET_KEY'] = 'a25c29160c03ba0aae322a3b20ce454d44276466c3cf4b30'
 
 # run appy.py in cmd for flask backend - .venv\Scripts\python "d:\Projects\Fraud Detection using ML\Fraud_detection_using_ML\Python scripts\app.py"
 

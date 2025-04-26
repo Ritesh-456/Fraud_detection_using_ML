@@ -1,3 +1,5 @@
+# D:\Projects\Fraud Detection using ML\Fraud_detection_using_ML\Python scripts\predict.py
+
 import sys
 import os
 
@@ -8,11 +10,17 @@ sys.path.append(project_root)
 from helpers.log import logger as log
 
 def predict_fraud(data):
-    try:
-        # This is a placeholder function.
-        # The actual prediction logic using your trained model goes here.
-        # It would typically involve preprocessing 'data' and calling model.predict()
+    """
+    This is a placeholder function.
+    The actual prediction logic using your trained model goes here.
+    It would typically involve preprocessing 'data' and calling model.predict()
 
+    NOTE: In the current project structure (app.py), the prediction logic
+    is handled directly by the HybridFraudDetector class imported from
+    Notebook.fraud_detection_model_. This file (predict.py) is not
+    currently used by app.py.
+    """
+    try:
         if not data:
             raise ValueError("Empty input data for prediction")
 

@@ -1,3 +1,5 @@
+# D:\Projects\Fraud Detection using ML\Fraud_detection_using_ML\Python scripts\feature_extraction.py
+
 import re
 import urllib.parse
 from collections import Counter
@@ -5,6 +7,11 @@ import numpy as np
 import math
 
 def extract_features(url):
+    """
+    Extracts features from a URL.
+    NOTE: This function is not currently used by app.py.
+    The feature extraction logic is integrated into the HybridFraudDetector class.
+    """
     features = []
 
     features.append(url_length(url))
@@ -40,5 +47,16 @@ def suspicious_keywords(url):
 def domain_entropy(url):
     domain = urllib.parse.urlparse(url).netloc
     probs = [n / len(domain) for n in Counter(domain).values()]
-    entropy = -sum(p * math.log2(p) for p in probs)
+    entropy = -sum(p * math.log2(p) for p in probs) if probs else 0 # Added check for empty domain
     return round(entropy, 3)
+
+
+if __name__ == "__main__":
+    # Example usage of the functions in this file
+    test_url = "https://www.example.com/path?query=test"
+    features = extract_features(test_url)
+    print(f"Features for {test_url}: {features}")
+
+    test_url_fraud = "http://bad.site.xyz/login.php"
+    features_fraud = extract_features(test_url_fraud)
+    print(f"Features for {test_url_fraud}: {features_fraud}")
