@@ -1,33 +1,42 @@
 # D:\Projects\Fraud Detection using ML\Fraud_detection_using_ML\pyproject.toml
 
+# This file manages the project's metadata and dependencies using PDM (or compatible tools like uv).
+
 [project]
 name = "fraud-detection-using-ml"
-version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.11"
+version = "0.1.0" # Project version
+description = "A system for detecting fraudulent URLs and QR codes using machine learning." # Project description
+readme = "README.md" # Path to the project's README file
+requires-python = ">=3.11" # Minimum Python version required
+
+# List of project dependencies. These are the third-party libraries required for the project to run.
+# Standard library modules (like os, sys, json, re, logging, urllib, etc.) are NOT listed here
+# as they are included with Python itself.
 dependencies = [
-    "flask>=3.1.0",
-    "flask-cors>=5.0.1",
-    "flask-login>=0.6.3",
+    "flask>=3.1.0", 
+    "flask-cors>=5.0.1", 
+    "flask-login>=0.6.3", 
     "mysql-connector-python>=9.3.0",
-    "numpy>=2.2.5",
-    "opencv-python>=4.11.0.86", # Make sure you have the correct version/package installed
+    "numpy>=2.2.5", 
+    "opencv-python>=4.11.0.86", 
     "pandas>=2.2.3",
     "pillow>=11.2.1",
-    "python-dotenv>=1.1.0", # This is already included
+    "python-dotenv>=1.1.0",
     "pyzbar>=0.1.9",
-    "qrcode>=8.1",
+    "qrcode>=8.1", 
     "scikit-learn>=1.6.1",
-    "Werkzeug>=3.0.0", # This is already included and used for hashing
+    "Werkzeug>=3.0.0", 
+    "joblib>=1.0.0", 
+    "streamlit>=1.30.0", 
+    "requests>=2.32.3",
 ]
 
 [build-system]
-requires = ["pdm-backend"]
-build-backend = "pdm.backend"
+requires = ["pdm-backend"] # Specifies the build backend
+build-backend = "pdm.backend" # The build backend used by PDM
 
 [tool.pdm]
-distribution = true
+distribution = true # PDM setting
 
 [tool.pdm.dev-dependencies]
-dev = []
+dev = [] # List of dependencies only needed for development (testing, linting, etc.)
