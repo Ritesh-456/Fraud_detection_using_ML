@@ -1,5 +1,3 @@
-# D:\Projects\Fraud Detection using ML\Fraud_detection_using_ML\streamlit_app.py
-
 # This script creates the Streamlit user interface for the Fraud Detection System.
 # It acts as a client that communicates with the Flask backend API (app.py)
 # to perform analysis, manage history, and fetch statistics.
@@ -16,6 +14,7 @@ import requests # For making HTTP requests to the Flask backend API
 import pandas as pd # Useful for displaying data in tables (like history)
 # Required for charting
 import altair as alt # Powerful charting library integrated with Streamlit
+import logging # Import logging for potential debug messages
 
 
 # --- Configuration and API Endpoints ---
@@ -177,6 +176,11 @@ if 'feedback_item' not in st.session_state:
      st.session_state['feedback_item'] = None # Stores the item data (URL) for which feedback is being submitted
 # --- END ADDED ---
 
+# --- Logging Configuration for Streamlit App ---
+# Although not a backend, basic logging can be useful for debugging the Streamlit app itself
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+streamlit_logger = logging.getLogger(__name__)
+
 
 # --- Backend API Interaction Helper Function ---
 # IMPORTANT: This function must be defined *before* any other function that calls it.
@@ -214,6 +218,7 @@ def call_backend_api(endpoint, method="GET", json_data=None, files=None, params=
         # These status codes are returned by the backend API on specific errors.
         if response.status_code == 401:
             # If 401 Unauthorized, it means authentication failed or session expired.
+            streamlit_logger.warning(f"API call to {endpoint} returned 401 Unauthorized.")
             st.error("Authentication required. Your session may have expired. Please log in.")
             # Reset login state and trigger a UI rerun to show the login forms.
             st.session_state['logged_in'] = False
@@ -232,28 +237,35 @@ def call_backend_api(endpoint, method="GET", json_data=None, files=None, params=
             except json.JSONDecodeError:
                 # If the response body is not valid JSON, use the raw response text as the error detail.
                 error_detail = response.text
+            streamlit_logger.error(f"API Error {response.status_code} from {endpoint}: {error_detail}")
             st.error(f"API Error {response.status_code}: {error_detail}") # Display error message to the user using Streamlit
             return None, response.status_code # Indicate failure to the caller (return None for data)
 
         # If response status code is OK (2xx, including 204), parse and return the data if available.
         if response.status_code == 204:
+             streamlit_logger.debug(f"API call to {endpoint} returned 204 No Content.")
              return None, response.status_code # No content to return for 204
         else:
              try:
                 # Attempt to parse the response body as JSON. This is expected for most API endpoints.
-                return response.json(), response.status_code
+                data = response.json()
+                streamlit_logger.debug(f"API call to {endpoint} successful, status {response.status_code}. Data (truncated): {json.dumps(data)[:200]}...")
+                return data, response.status_code
              except json.JSONDecodeError:
                 # Handle cases where a 2xx response was expected to contain JSON but did not (e.g., empty body, invalid JSON).
+                streamlit_logger.error(f"API Error: Received valid status code ({response.status_code}) but invalid JSON response from {endpoint}. Response text: {response.text[:200]}...")
                 st.error(f"API Error: Received valid status code ({response.status_code}) but invalid JSON response from {endpoint}")
                 return None, response.status_code # Indicate failure (invalid response format)
 
 
     except requests.exceptions.ConnectionError:
         # Handle network errors where the backend server cannot be reached at all (e.g., server is down).
+        streamlit_logger.critical(f"Connection error: Could not connect to backend API at {BACKEND_API_URL}.")
         st.error("Connection error: Could not connect to the backend API at {}. Please ensure the Flask server is running.".format(BACKEND_API_URL))
         return None, None # Indicate network failure (no status code from response)
     except Exception as e:
         # Catch any other unexpected exceptions that occur during the request process (e.g., issues with input data).
+        streamlit_logger.exception(f"An unexpected error occurred during API call to {endpoint}.")
         st.error(f"An unexpected error occurred during API call to {endpoint}: {e}")
         return None, None # Indicate general error
 
@@ -465,14 +477,18 @@ def load_history_api(filters):
     # Check if the API call was successful (status 200 OK) and the data received is a list (expected format).
     if status_code == 200 and isinstance(data, list):
         st.session_state['history_data'] = data # Store the fetched history data (list of dicts) in session state.
+        streamlit_logger.debug(f"Loaded {len(data)} history items.") # Log count
         # st.success(f"Loaded {len(data)} history items.") # Avoid success message on every history load
 
     elif status_code == 204: # Backend returned 204 No Content (indicates no history found matching filters)
          st.session_state['history_data'] = [] # Set history data to an empty list.
+         streamlit_logger.debug("History load returned 204 No Content (no items).")
          # st.info("No history found matching filters.") # Message handled by UI display logic below based on empty list.
 
     else: # API call failed (error message displayed by call_backend_api).
         st.session_state['history_data'] = [] # Clear history data on error.
+        streamlit_logger.warning("History load failed or returned non-list data.")
+
 
     # Note: No explicit st.rerun() needed within this function if it's called *before* the history list is rendered
     # in the main script loop (e.g., on initial logged-in display or by the Apply Filters button).
@@ -493,6 +509,7 @@ def clear_history_api():
     # If the API call was successful (status 200 OK) and backend reports success...
     if status_code == 200 and data and data.get('success'):
         st.success("All history cleared successfully.") # Display success message.
+        streamlit_logger.info("History cleared successfully via API.")
         # Clear history data and stats in session state upon successful backend clear.
         # This updates the displayed history list and charts on the next rerun.
         st.session_state['history_data'] = []
@@ -506,6 +523,8 @@ def clear_history_api():
         st.session_state['feedback_item'] = None # Clear feedback item state
         st.rerun() # Trigger a rerun to update UI (display empty history list, no charts).
 
+    else:
+         streamlit_logger.error(f"History clear API failed with status {status_code}.")
     # Error message handled by call_backend_api for failure status codes.
 
 
@@ -524,6 +543,7 @@ def export_history_api(filters):
         # Check for common Streamlit-handled errors first (like 401)
         # Manual handling needed here as call_backend_api assumes JSON response on success.
         if response.status_code == 401:
+             streamlit_logger.warning(f"Export history request returned 401 Unauthorized.")
              # call_backend_api handles 401 and triggers rerun, but direct request needs its own handling.
              st.error("Authentication required to export history. Your session may have expired. Please log in.")
              st.session_state['logged_in'] = False
@@ -538,28 +558,34 @@ def export_history_api(filters):
                  error_detail = response.json().get('error', response.text)
              except json.JSONDecodeError: # If not JSON, use raw text
                  error_detail = response.text
+             streamlit_logger.error(f"API Error {response.status_code} during export fetch: {error_detail}")
              st.error(f"API Error {response.status_code}: Failed to fetch export data: {error_detail}")
              st.session_state['export_csv_data'] = None # Clear any previous export data
              return # Stop here
 
         # If response is OK (status 200) or 204 (No Content)
         if response.status_code == 204: # Backend returned 204 No Content (no history found matching filters)
+             streamlit_logger.info("Export history returned 204 No Content (no items).")
              st.info("No history found matching filters to export.")
              st.session_state['export_csv_data'] = None # Ensure no previous export data is available for download
         elif response.status_code == 200: # Backend returned CSV data (status 200 OK with body)
+             streamlit_logger.info("Export history data fetched successfully.")
              # Store the raw CSV content (bytes) in session state.
              st.session_state['export_csv_data'] = response.content
              st.success("Export data generated. Click 'Download CSV' below.")
              # No explicit rerun needed here, the presence of st.session_state['export_csv_data'] triggers the download button display.
         else:
             # Handle any other unexpected 2xx statuses (unlikely for this endpoint)
+            streamlit_logger.error(f"Unexpected status code {response.status_code} received during export fetch.")
             st.error(f"Unexpected status code {response.status_code} received during export fetch.")
             st.session_state['export_csv_data'] = None
 
     except requests.exceptions.ConnectionError:
+         streamlit_logger.critical(f"Connection error: Could not connect to backend API for export at {BACKEND_API_URL}.")
          st.error("Connection error: Could not connect to the backend API for export. Please ensure the Flask server is running.")
          st.session_state['export_csv_data'] = None # Clear export data
     except Exception as e:
+         streamlit_logger.exception(f"An unexpected error occurred during export data fetch.")
          st.error(f"An unexpected error occurred during export data fetch: {e}")
          st.session_state['export_csv_data'] = None
 
@@ -580,6 +606,7 @@ def load_stats_api():
     # Check if the API call was successful (status 200 OK) and the data received is a dictionary (expected format).
     if risk_status_code == 200 and isinstance(risk_stats_data, dict):
         st.session_state['risk_level_stats'] = risk_stats_data # Store the stats dictionary
+        streamlit_logger.debug(f"Fetched risk level stats: {risk_stats_data}") # Log fetched data
         # st.success("Risk level stats loaded.")
     else: # If API call failed (status 4xx/5xx) or data format is wrong, call_backend_api displays error.
         st.session_state['risk_level_stats'] = None # Clear stats on error.
@@ -591,6 +618,7 @@ def load_stats_api():
     # Check if the API call was successful (status 200 OK) and the data is a dictionary (expected format).
     if type_status_code == 200 and isinstance(type_stats_data, dict):
         st.session_state['type_stats'] = type_stats_data # Store the stats dictionary
+        streamlit_logger.debug(f"Fetched type stats: {type_stats_data}") # Log fetched data
         # st.success("Type stats loaded.")
     else: # If API call failed or data format is wrong, call_backend_api displays error.
         st.session_state['type_stats'] = None # Clear stats on error.
@@ -602,7 +630,7 @@ def load_stats_api():
 # --- ADDED: Function to Submit User Feedback on Analysis ---
 def submit_feedback_api(item_data, correct_label):
     """Calls the backend API to submit user feedback (correct label) for an analyzed item."""
-    st.info(f"Submitting feedback for '{item_data[:50]}{'...' if len(item_data) > 50 else ''}': {correct_label}...")
+    st.info(f"Submitting feedback for '{item_data[:50]}{'...' if len(item_data) > 50 else ''}': {'Fraudulent' if correct_label == 1 else 'Legitimate'}...")
     # Prepare JSON data with the item data (URL/QR content) and the correct label (0 or 1).
     json_data = {'item_data': item_data, 'label': correct_label}
     # Call the new backend endpoint using the helper function.
@@ -750,32 +778,17 @@ if st.session_state['logged_in']:
                      key="feedback_label_radio" # Unique key for the widget
                  )
 
-                 # Add a button to submit the feedback. Use a form to group feedback widgets.
-                 with st.form("feedback_form", clear_on_submit=False):
-                      # Need to re-get the feedback_label value inside the form if its value is used in logic triggered by the form button
-                      # Or use a submit button outside the form. Let's use a submit button outside for simplicity here.
-                      # feedback_submit_button = st.form_submit_button("Submit Feedback") # If using form
-
-                      # Let's use a simple button outside the form for feedback submission.
-                      pass # No form needed for this approach
-
-                 # Button to submit feedback, appears next to radio buttons or below them.
+                 # Button to submit feedback.
                  # Only show the submit button if a label is selected (not "Select one").
                  if feedback_label in ["Legitimate", "Fraudulent"]:
-                      if st.button("Submit Feedback"):
+                      # Add a unique key to the button
+                      if st.button("Submit Feedback", key="submit_feedback_button"):
                            # Map "Legitimate" to label 0 and "Fraudulent" to label 1.
                            correct_label_value = 1 if feedback_label == "Fraudulent" else 0
                            # Call the function to submit feedback to the backend API.
                            submit_feedback_api(st.session_state['feedback_item'], correct_label_value)
                            # submit_feedback_api handles hiding the form and showing success/error.
             # --- END ADDED: User Feedback Form ---
-
-        # Clear the feedback form state after displaying it once per analysis result.
-        # We want the form to show up ONCE after analysis, then disappear after feedback is submitted.
-        # Resetting the flag here makes the form appear only on the rerun *immediately* after analyze_url/qr sets the flag.
-        # If the user interacts with other widgets, the flag would reset here too.
-        # A more robust way is to clear the flag only when feedback is submitted or analysis is cleared.
-        # Let's stick to clearing on submit or analysis clear for now.
 
 
     else:
@@ -808,7 +821,7 @@ if st.session_state['logged_in']:
          # Select box widget for filtering history by risk level.
          risk_filter_value = st.selectbox(
              "Risk:", # Label
-             ["All", "Fraudulent", "Not Fraudulent", "Critical", "High", "Medium", "Low", "Safe", "Unknown"], # Options matching backend levels/flags
+             ["All", "Fraudulent", "Not Fraudulent", "Critical", "High", "Medium", "Low", "Safe", "Unknown", "Error", "Invalid Result"], # Options matching backend levels/flags + new ones
              key="history_risk_filter_sb" # Unique key
          )
          # Map the selected display string to the parameter dictionary expected by the backend API.
@@ -822,8 +835,16 @@ if st.session_state['logged_in']:
               risk_filter_param = {'is_fraud': 'false'}
          elif risk_filter_value != "All":
               # If a specific risk level is selected (not "All" or the fraud flags),
-              # set the 'risk_level' parameter. The backend handles adding the is_fraud=false implicitly.
-              risk_filter_param = {'risk_level': risk_filter_value}
+              # set the 'risk_level' parameter.
+              # Check if the selected value is one of the valid risk level strings
+              valid_risk_levels = ["Critical", "High", "Medium", "Low", "Safe", "Unknown", "Error", "Invalid Result"] # Match values from backend/frontend display
+              if risk_filter_value in valid_risk_levels:
+                risk_filter_param = {'risk_level': risk_filter_value}
+              else:
+                  # Handle unexpected risk filter value, treat as 'All' or log warning
+                  streamlit_logger.warning(f"Received unexpected risk filter value in UI: '{risk_filter_value}'. Treating as 'All'.")
+                  risk_filter_param = None
+
 
     with filter_col3:
         # Text input widget for searching within history item data.
@@ -853,6 +874,7 @@ if st.session_state['logged_in']:
          # Placing it in a separate column can help with layout.
          st.write(" ") # Add vertical space to align the button with inputs if needed
          # The button triggers the history loading process when clicked.
+         # This is a standard button outside any specific form for this section.
          if st.button("Apply Filters"):
               # Call the function to load history data with the current filters.
               load_history_api(st.session_state['history_filters'])
@@ -922,34 +944,36 @@ if st.session_state['logged_in']:
     clear_col, export_col = st.columns(2)
 
     with clear_col:
-         # Button to clear all history for the user. Requires confirmation.
+         # Button to clear all history for the user. Requires confirmation dialog.
          st.write("Clear all your analysis history.")
-         # Using a form for confirmation helps manage the state related to the confirmation step.
-         with st.form("clear_history_form", clear_on_submit=False):
-              # The initial button that triggers the confirmation logic.
-              # Only show this button if we are NOT currently awaiting confirmation.
-              if not st.session_state.get('awaiting_clear_confirm', False):
-                   if st.form_submit_button("Clear All History"):
-                        # Set a flag in session state to indicate that confirmation is needed.
-                        st.session_state['awaiting_clear_confirm'] = True
-                        st.rerun() # Use st.rerun()
+         # Use a standard button to trigger the confirmation flow.
+         # Only show this button if we are NOT currently awaiting confirmation.
+         if not st.session_state.get('awaiting_clear_confirm', False):
+              # Add a unique key to the button
+              if st.button("Clear All History", key="trigger_clear_confirm_button"):
+                   # Set a flag in session state to indicate that confirmation is needed.
+                   st.session_state['awaiting_clear_confirm'] = True
+                   st.rerun() # Trigger a rerun to show the confirmation UI
 
-              # Display confirmation message and buttons IF the confirmation flag is set.
-              if st.session_state.get('awaiting_clear_confirm', False):
-                  st.warning("Are you sure you want to clear ALL your history? This cannot be undone.")
-                  # Use standard buttons for the confirmation actions. Place them side-by-side.
-                  confirm_yes_col, confirm_cancel_col = st.columns(2)
-                  with confirm_yes_col:
-                       # The button that performs the clear action if confirmed.
-                       if st.button("Yes, Confirm Clear History"):
-                            clear_history_api() # Call the function to clear history via API
-                            # clear_history_api handles resetting the awaiting_clear_confirm flag and rerunning.
-                  with confirm_cancel_col:
-                       # The button to cancel the clear operation.
-                       if st.button("Cancel"):
-                            st.info("History clear cancelled.")
-                            st.session_state['awaiting_clear_confirm'] = False # Clear the confirmation flag
-                            st.rerun() # Use st.rerun()
+         # Display confirmation message and buttons IF the confirmation flag is set.
+         # THESE BUTTONS MUST BE OUTSIDE ANY st.form BLOCK.
+         if st.session_state.get('awaiting_clear_confirm', False):
+             st.warning("Are you sure you want to clear ALL your history? This cannot be undone.")
+             # Use columns for the confirmation buttons to place them side-by-side.
+             confirm_yes_col, confirm_cancel_col = st.columns(2)
+             with confirm_yes_col:
+                  # The button that performs the clear action if confirmed.
+                  # This must be st.button. Add unique key.
+                  if st.button("Yes, Confirm Clear History", key="confirm_clear_yes_button"):
+                       clear_history_api() # Call the function to clear history via API
+                       # clear_history_api handles resetting the awaiting_clear_confirm flag and rerunning.
+             with confirm_cancel_col:
+                  # The button to cancel the clear operation.
+                  # This must be st.button. Add unique key.
+                  if st.button("Cancel", key="confirm_clear_cancel_button"):
+                       st.info("History clear cancelled.")
+                       st.session_state['awaiting_clear_confirm'] = False # Clear the confirmation flag
+                       st.rerun() # Use st.rerun() explicitly to dismiss the confirmation UI
 
 
     with export_col:
@@ -1005,37 +1029,24 @@ if st.session_state['logged_in']:
              # Use .items() to get (key, value) pairs, then create DataFrame columns.
              risk_stats_df = pd.DataFrame(list(st.session_state['risk_level_stats'].items()), columns=['Risk Level', 'Count'])
 
-             # --- Calculate Percentage and add it as a new column ---
-             # Calculate the total count across all risk levels.
-             total_count = risk_stats_df['Count'].sum()
-             # Avoid division by zero if total_count is 0.
-             if total_count > 0:
-                 # Calculate percentage for each risk level and store in a new column.
-                 risk_stats_df['Percentage'] = (risk_stats_df['Count'] / total_count).round(3) # Round to 3 decimal places for precision
-                 # Format the percentage column as a string for tooltip display (e.g., "15.3%")
-                 risk_stats_df['PercentageTooltip'] = risk_stats_df['Percentage'].apply(lambda x: f'{x:.1%}') # Format as string for tooltip
-             else:
-                  risk_stats_df['Percentage'] = 0 # Set percentage to 0 if total is 0
-                  risk_stats_df['PercentageTooltip'] = '0.0%'
-
-
-             # Create an Altair chart (Doughnut chart).
+             # Create an Altair chart (Bar chart).
              # Ensure Altair is installed (`uv pip install altair`).
-             # Use the calculated 'PercentageTooltip' field in the tooltip for displaying percentage.
-             chart = alt.Chart(risk_stats_df).mark_arc(outerRadius=120).encode( # outerRadius makes it a Doughnut
-                 theta=alt.Theta(field="Count", type="quantitative", stack="normalize"), # Size of slices based on Count, use stack="normalize" here for percentage calculation in Vega-Lite
+             chart = alt.Chart(risk_stats_df).mark_bar().encode(
+                 # Use x for Risk Level (nominal) and y for Count (quantitative)
+                 # Use sort='-y' to sort bars by count descending
+                 x=alt.X('Risk Level', title='Risk Level', sort='-y'),
+                 y=alt.Y('Count', title='Number of Analyses'), # Y-axis: Count
                  color=alt.Color(field="Risk Level", type="nominal", scale=alt.Scale(
                      # Define colors corresponding to your risk levels. These should ideally match the theme/CSS.
                      # Example domain values and range colors:
+                     # Keep 'Fraudulent' in the domain to assign it a color, even if the backend doesn't return it as a risk_level string.
                      domain=['Critical', 'High', 'Medium', 'Low', 'Safe', 'Fraudulent', 'Unknown', 'Error', 'Invalid Result'],
                      range=['#ef4444', '#f97316', '#f59e0b', '#4ade80', '#16a34a', '#dc2626', '#9ca3af', '#a1a1aa', '#64748b'] # Example colors (Tailwind CSS palette inspired)
                  )),
-                 order=alt.Order(field="Count", sort="descending"), # Order slices by size (largest first)
-                 # Tooltip: Include Risk Level, Count, and the calculated Percentage (as a formatted string).
+                 # Tooltip: Include Risk Level and Count.
                  tooltip=[
                      alt.Tooltip("Risk Level", title="Risk Level"), # Show Risk Level label
-                     alt.Tooltip("Count", title="Count"), # Show Count
-                     alt.Tooltip("PercentageTooltip", title="Percentage") # Show the formatted Percentage string from the new column
+                     alt.Tooltip("Count", title="Count") # Show Count
                  ]
              ).properties(
                  title="Distribution of Analysis Results by Risk Level" # Chart title
@@ -1121,17 +1132,3 @@ else:
                      register_user(reg_email, reg_username, reg_password, reg_confirm_password) # Call the registration function to interact with the backend API
                  else:
                      st.warning("Please fill in all registration fields.")
-
-
-# --- How to Run This Application ---
-# 1.  Ensure your Python environment has all dependencies installed (streamlit, requests, pandas, altair).
-#     Run `uv sync` or `uv pip install .` in your project root directory if needed.
-# 2.  Open a terminal, navigate to your project root directory.
-# 3.  Activate your Python virtual environment if required.
-# 4.  Start your Flask backend API in one terminal:
-#     `.\.venv\Scripts\python "D:\Projects\Fraud Detection using ML\Fraud_detection_using_ML\Python scripts\app.py"` (Adjust path as necessary)
-# 5.  Open a *separate* terminal, navigate to your project root directory.
-# 6.  Activate your Python virtual environment in this terminal as well.
-# 7.  Run the Streamlit application:
-#     `streamlit run streamlit_app.py`
-# 8.  Access the application in your web browser, typically at http://localhost:8501.

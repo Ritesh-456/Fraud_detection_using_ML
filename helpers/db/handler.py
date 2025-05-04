@@ -369,28 +369,30 @@ def get_user_history(user_id, filters=None):
                 logger.debug(f"History filter: Type='{item_type}'")
 
 
-            # Filter by risk_level string ('Low', 'Medium', etc.).
-            # This filter now applies independently of the 'is_fraud' flag filter.
-            risk_level = filters.get('risk_level')
-            # Check if filter value is provided and not empty/all.
-            if risk_level and risk_level.lower() not in ['', 'all']:
-                 # Add clause to filter by the specific risk_level string stored in the JSON.
-                 # Use JSON_EXTRACT and CAST AS CHAR for robust string comparison from JSON.
-                 where_clauses.append("CAST(JSON_EXTRACT(analysis_result, '$.risk_level') AS CHAR) = %s")
-                 query_params.append(risk_level) # Add risk_level value to parameters
-                 logger.debug(f"History filter: Risk_level='{risk_level}'")
-
-
             # Filter by is_fraud (boolean True or False).
-            # This filter applies independently of the risk_level filter. It checks the boolean flag.
             # Check if the key 'is_fraud' is present in the filters dictionary (meaning frontend sent the parameter).
             if 'is_fraud' in filters:
-                 # Add clause to filter by the boolean 'is_fraud' flag stored in the JSON.
-                 # Use CAST AS CHAR and compare to string 'true' or 'false'.
+                 # Use JSON_EXTRACT and CAST AS CHAR for compatibility if ->> doesn't work
+                 # Need to compare to string 'true' or 'false' extracted from JSON boolean
                  where_clauses.append("CAST(JSON_EXTRACT(analysis_result, '$.is_fraud') AS CHAR) = %s")
                  # Append the string 'true' or 'false' parameter based on the boolean value in the filters dict.
                  query_params.append(str(bool(filters['is_fraud'])).lower())
                  logger.debug(f"History filter: Is_fraud={bool(filters['is_fraud'])}")
+
+            # Filter by risk_level string ('Low', 'Medium', etc.).
+            # This filter is applied *in addition to* (AND) the is_fraud filter if both are present.
+            # It should NOT conflict with the 'Fraudulent'/'Not Fraudulent' selection handled by the is_fraud filter above.
+            # So, only apply this filter if 'risk_level' is present and NOT 'All', 'Fraudulent', or 'Not Fraudulent'.
+            risk_level = filters.get('risk_level')
+            if risk_level and risk_level.lower() not in ['', 'all', 'fraudulent', 'not fraudulent']:
+                valid_risk_levels_for_string_match = ["Critical", "High", "Medium", "Low", "Safe", "Unknown", "Error", "Invalid Result"] # Match values from backend/frontend display
+                if risk_level in valid_risk_levels_for_string_match:
+                    # Use JSON_EXTRACT and CAST AS CHAR for compatibility
+                    where_clauses.append("CAST(JSON_EXTRACT(analysis_result, '$.risk_level') AS CHAR) = %s")
+                    query_params.append(risk_level) # Add risk_level value to parameters
+                    logger.debug(f"History filter: Risk_level='{risk_level}' (string match)")
+                else:
+                    logger.warning(f"Received unexpected risk filter value '{risk_level}' during string match filtering. Ignoring.")
 
 
             # Filter by search_term (substring search within 'item_data').
@@ -638,11 +640,13 @@ def clear_user_history(user_id):
 
 def get_risk_level_counts(user_id):
     """
-    Fetches the count of analysis results grouped by risk level (and 'Fraudulent' status) for a user.
+    Fetches the count of analysis results grouped by risk level string for a user.
+    Uses JSON_EXTRACT and Python string cleaning to handle potential quotes.
+    Includes a robustness check in the SQL query using JSON_TYPE.
     Args:
         user_id (int): The ID of the user.
     Returns:
-        dict: A dictionary where keys are risk level names (e.g., 'Critical', 'Safe', 'Fraudulent')
+        dict: A dictionary where keys are risk level names (e.g., 'Critical', 'Safe', 'Error')
               and values are the counts. Returns an empty dictionary on error or if no results found.
     """
     connection = create_db_connection() # Create a new connection
@@ -651,368 +655,62 @@ def get_risk_level_counts(user_id):
         return {} # Return empty dict on failure
 
     cursor = None
-    risk_counts = {} # Initialize result dictionary
+    # Initialize with expected categories to ensure they are always present in the returned dict,
+    # even if their count is 0. This helps Streamlit render a consistent chart legend.
+    # We include 'Fraudulent' here with a default 0. If the model never assigns the
+    # string 'Fraudulent' as a risk_level, this category will always show 0 count in the chart.
+    # The chart will display counts for the *assigned* risk level strings like Critical, High, etc.
+    expected_chart_categories = ['Critical', 'High', 'Medium', 'Low', 'Safe', 'Fraudulent', 'Unknown', 'Error', 'Invalid Result']
+    risk_counts = {category: 0 for category in expected_chart_categories} # Initialize with 0 counts for all expected categories
 
     try:
         # Ensure user_id is an integer.
         user_id_int = int(user_id)
-
-        # We need to count items based on both 'risk_level' and 'is_fraud' in the JSON.
-        # 'Fraudulent' items are those where 'is_fraud' is true.
-        # Other risk levels ('Critical', 'High', 'Medium', 'Low', 'Safe', 'Unknown', 'Error', 'Invalid Result') apply regardless of 'is_fraud'.
-        # Let's count ALL items by their 'risk_level' string value first.
-        query_all_risk_levels = """
-        SELECT
-            CAST(JSON_EXTRACT(analysis_result, '$.risk_level') AS CHAR) as risk_level,
-            COUNT(*) as count
-        FROM analysis_history
-        WHERE user_id = %s
-          AND JSON_EXTRACT(analysis_result, '$.risk_level') IS NOT NULL -- Only count items where risk_level key/value exists
-        GROUP BY risk_level;
-        """
-        # We might ALSO want a separate count for the boolean is_fraud flag if the UI wants to highlight that specifically.
-        # But the current stats endpoint in app.py is designed to show risk level distribution, including 'Fraudulent' as a category.
-        # Let's rely on the 'risk_level' string from the JSON, but include 'Fraudulent' if the backend assigns it.
-        # The backend's analyze_url *does* set risk_level based on confidence and prediction, including assigning 'Critical'/'High'/'Medium' when prediction is 1.
-        # It does *not* currently assign the STRING 'Fraudulent' as a risk_level.
-        # The frontend maps is_fraud=true to badge 'Fraudulent'.
-        # The stats endpoint should count how many items have is_fraud=true.
-
-        # Let's adjust the stats fetching logic to align with the UI display logic:
-        # 1. Count by the specific 'risk_level' string for items where is_fraud is FALSE.
-        # 2. Count items where is_fraud is TRUE, and label this count as 'Fraudulent'.
-
-        # Query 1: Count by specific risk levels ONLY for items where 'is_fraud' is false.
-        query_risk_levels_non_fraud = """
-        SELECT
-            CAST(JSON_EXTRACT(analysis_result, '$.risk_level') AS CHAR) as risk_level,
-            COUNT(*) as count
-        FROM analysis_history
-        WHERE user_id = %s
-          AND CAST(JSON_EXTRACT(analysis_result, '$.is_fraud') AS CHAR) = 'false'
-          AND CAST(JSON_EXTRACT(analysis_result, '$.risk_level') AS CHAR) IN ('Critical', 'High', 'Medium', 'Low', 'Safe', 'Unknown', 'Error', 'Invalid Result') -- Count known non-fraud levels
-          AND JSON_EXTRACT(analysis_result, '$.risk_level') IS NOT NULL -- Ensure risk_level exists
-        GROUP BY risk_level;
-        """
-        # Query 2: Count items where 'is_fraud' is true.
-        query_is_fraud = """
-        SELECT COUNT(*) as count
-        FROM analysis_history
-        WHERE user_id = %s
-          AND CAST(JSON_EXTRACT(analysis_result, '$.is_fraud') AS CHAR) = 'true'; -- Explicitly filter fraud items
-        """
-        # Optional Query 3: Count items with invalid JSON or missing is_fraud/risk_level if needed,
-        # assign them to an 'Other' or 'Invalid Data' category if not covered by Q1/Q2.
 
         cursor = connection.cursor(dictionary=True) # Fetch results as dictionaries
 
-        # Execute Query 1: Get counts for non-fraud risk levels
-        logger.debug(f"Executing risk level counts query (non-fraud) for user {user_id_int}")
-        cursor.execute(query_risk_levels_non_fraud, (user_id_int,))
-        risk_level_results = cursor.fetchall()
-        for row in risk_level_results:
-            # Add results to the dictionary. Ensure risk_level key exists and is non-empty string.
-            if row.get('risk_level'):
-                 risk_counts[row['risk_level']] = row.get('count', 0) # Use .get('count', 0) for safety
-
-        # Execute Query 2: Get count for fraudulent items
-        logger.debug(f"Executing is_fraud counts query (fraud) for user {user_id_int}")
-        cursor.execute(query_is_fraud, (user_id_int,))
-        is_fraud_result = cursor.fetchone() # Fetch a single row (the count)
-        if is_fraud_result and is_fraud_result.get('count', 0) > 0:
-            # If there are fraudulent items, add their count under the key 'Fraudulent'.
-            # This adds a 'Fraudulent' slice to the pie chart.
-            risk_counts['Fraudulent'] = is_fraud_result.get('count', 0)
-
-        # Optional: Execute Query 3 for other cases and add to counts if applicable.
-
-        logger.info(f"Risk level counts fetched for user {user_id_int}: {risk_counts}")
-        return risk_counts # Return the dictionary of counts
-
-    except ValueError as e:
-        # Catch error if user_id is not a valid integer.
-        logger.error(f"Error fetching risk level counts (ValueError): Invalid user ID format '{user_id}'. Error: {e}", exc_info=True)
-        return {} # Return empty dict on invalid ID
-
-    except mysql.connector.Error as e:
-        # Catch specific MySQL connector errors during query execution or fetch.
-        logger.error(f"MySQL Error fetching risk level counts for user {user_id}: {e}", exc_info=True)
-        return {} # Return empty dict on DB error
-
-    except Exception as e: # Catch any other unexpected exceptions
-        logger.exception(f"Unexpected Error fetching risk level counts for user {user_id}.") # Log with traceback
-        return {} # Return empty dict on unexpected error
-
-    finally:
-        # Close cursor and connection.
-        if cursor:
-            cursor.close()
-        if connection and connection.is_connected():
-             # logger.debug("Closing database connection in get_risk_level_counts.") # Optional debug log
-             connection.close()
-
-
-def get_type_counts(user_id):
-    """
-    Fetches the count of analysis results grouped by item type ('url', 'qr') for a user.
-    Args:
-        user_id (int): The ID of the user.
-    Returns:
-        dict: A dictionary where keys are item types ('url', 'qr') and values are counts.
-              Returns {'url': 0, 'qr': 0} on success if no history found, or an empty dictionary on DB error.
-    """
-    connection = create_db_connection() # Create a new connection
-    if connection is None:
-        logger.error(f"Get type counts failed for user {user_id}: Database connection could not be established.")
-        return {} # Return empty dict on failure
-
-    cursor = None
-    # Initialize type_counts with 0 for expected types, ensures keys always exist even if counts are zero.
-    type_counts = {'url': 0, 'qr': 0}
-
-    try:
-        # Ensure user_id is an integer.
-        user_id_int = int(user_id)
-
-        # Query to count items grouped by item_type for the specific user.
-        query = """
-        SELECT item_type, COUNT(*) as count
-        FROM analysis_history
-        WHERE user_id = %s
-        GROUP BY item_type;
-        """
-        # logger.debug(f"Executing type counts query for user {user_id_int}")
-
-        cursor = connection.cursor(dictionary=True) # Fetch results as dictionaries
-        cursor.execute(query, (user_id_int,)) # Execute query with user ID
-        results = cursor.fetchall() # Fetch all rows
-
-        # Populate the type_counts dictionary from the query results.
-        for row in results:
-             # Only add counts for expected item types ('url', 'qr').
-             # Use .get() with default 'Unknown' just in case, though item_type is NOT NULL.
-             # If you want to include 'Unknown' types, add 'Unknown' to the initial dict and remove this check.
-             if row.get('item_type') in ['url', 'qr']:
-                  type_counts[row['item_type']] = row.get('count', 0) # Use .get('count', 0) for safety
-
-
-        logger.info(f"Type counts fetched for user {user_id_int}: {type_counts}")
-        return type_counts # Return the dictionary of counts (including 0s for missing types)
-
-    except ValueError as e:
-        # Catch error if user_id is not a valid integer.
-        logger.error(f"Error fetching type counts (ValueError): Invalid user ID format '{user_id}'. Error: {e}", exc_info=True)
-        return {} # Return empty dict on invalid ID
-
-    except mysql.connector.Error as e:
-        # Catch specific MySQL connector errors during query execution or fetch.
-        logger.error(f"MySQL Error fetching type counts for user {user_id}: {e}", exc_info=True)
-        return {} # Return empty dict on DB error
-
-    except Exception as e: # Catch any other unexpected exceptions
-        logger.exception(f"Unexpected Error fetching type counts for user {user_id}.") # Log with traceback
-        return {} # Return empty dict on unexpected error
-
-    finally:
-        # Close cursor and connection.
-        if cursor:
-            cursor.close()
-        if connection and connection.is_connected():
-             # logger.debug("Closing database connection in get_type_counts.") # Optional debug log
-             connection.close()
-
-
-# --- Admin/User Management Functions (Optional, potentially for admin interface) ---
-
-def get_all_users():
-    """
-    Fetches all users (id, email, username) from the 'users' table.
-    Note: This function is intended for administrative use and should be secured.
-    Returns:
-        list: A list of user dictionaries, or an empty list on error.
-    """
-    connection = create_db_connection() # Create a new connection
-    if connection is None:
-        logger.error("Get all users failed: Database connection could not be established.")
-        return [] # Return empty list on failure
-
-    cursor = None
-    users = [] # Initialize users list
-    query = "SELECT id, email, username FROM users"
-
-    try:
-        cursor = connection.cursor(dictionary=True) # Fetch as dictionaries
-        logger.debug("Executing get_all_users query.")
-        cursor.execute(query)
-        users = cursor.fetchall() # Fetch all rows
-        logger.debug(f"Fetched {len(users)} users.")
-        return users # Return list of user dictionaries
-
-    except Error as e:
-        # Log MySQL connector errors.
-        logger.error(f"MySQL Error fetching all users: {e}", exc_info=True)
-        return [] # Return empty list on DB error
-
-    except Exception as e: # Catch any other unexpected exceptions
-         logger.exception(f"Unexpected error in get_all_users.") # Log with traceback
-         return []
-
-    finally:
-        # Close cursor and connection.
-        if cursor:
-            cursor.close()
-        if connection and connection.is_connected():
-            # logger.debug("Closing database connection in get_all_users.") # Optional debug log
-            connection.close()
-
-def delete_user_by_id(user_id):
-    """
-    Deletes a user by their ID from the 'users' table.
-    Due to ON DELETE CASCADE in the schema, associated history items will also be deleted.
-    Note: This function is intended for administrative use and should be secured.
-    Args:
-        user_id (int): The ID of the user to delete.
-    Returns:
-        bool: True if the user was found and deleted, False otherwise (user not found or DB error).
-    """
-    connection = create_db_connection() # Create a new connection
-    if connection is None:
-        logger.error(f"Delete user {user_id} failed: Database connection could not be established.")
-        return False # Indicate failure
-
-    cursor = None
-    try:
-        # Attempt to convert user_id to integer, handle ValueError.
-        user_id_int = int(user_id)
-
-        cursor = connection.cursor() # Use default cursor
-        # Delete query for the user. ON DELETE CASCADE handles history deletion.
-        query_delete_user = "DELETE FROM users WHERE id = %s"
-        logger.debug(f"Attempting to delete user ID: {user_id_int}")
-
-        # Execute delete query.
-        cursor.execute(query_delete_user, (user_id_int,))
-        connection.commit() # Commit the transaction
-
-        # Check number of rows affected. If 1, user was found and deleted. If 0, user wasn't found.
-        if cursor.rowcount > 0:
-            logger.info(f"User with ID {user_id_int} deleted successfully (and history cascaded).")
-            return True # Indicate successful deletion
-
-        else:
-            # Log warning if no rows were deleted (user not found or already deleted).
-            logger.warning(f"Delete user by ID: User with ID {user_id_int} not found or already deleted.")
-            return False # Indicate failure (user not found)
-
-    except ValueError:
-        # Catch error if user_id is not a valid integer.
-        logger.warning(f"Invalid user_id format for delete_user_by_id: '{user_id}'.")
-        if connection and connection.is_connected(): connection.rollback() # Rollback just in case
-        return False # Indicate failure
-
-    except Error as e:
-        # Catch MySQL connector errors.
-        logger.error(f"MySQL Error deleting user {user_id}: {e}", exc_info=True)
-        if connection and connection.is_connected(): connection.rollback()
-        return False # Indicate failure
-
-    except Exception as e: # Catch any other unexpected exceptions
-         logger.exception(f"Unexpected error in delete_user_by_id for user {user_id}.") # Log with traceback
-         if connection and connection.is_connected(): connection.rollback()
-         return False
-
-    finally:
-        # Close cursor and connection.
-        if cursor:
-            cursor.close();
-        if connection and connection.is_connected():
-            # logger.debug("Closing database connection in delete_user_by_id.") # Optional debug log
-            connection.close()
-
-
-# --- Data Visualization Helper Functions ---
-# These functions query the database to get counts for charts/statistics.
-
-def get_risk_level_counts(user_id):
-    """
-    Fetches the count of analysis results grouped by risk level (and 'Fraudulent' status) for a user.
-    Args:
-        user_id (int): The ID of the user.
-    Returns:
-        dict: A dictionary where keys are risk level names (e.g., 'Critical', 'Safe', 'Fraudulent')
-              and values are the counts. Returns an empty dictionary on error or if no results found.
-    """
-    connection = create_db_connection() # Create a new connection
-    if connection is None:
-        logger.error(f"Get risk level counts failed for user {user_id}: Database connection could not be established.")
-        return {} # Return empty dict on failure
-
-    cursor = None
-    risk_counts = {} # Initialize result dictionary
-
-    try:
-        # Ensure user_id is an integer.
-        user_id_int = int(user_id)
-
-        # We need to count items based on their 'risk_level' string value from the JSON result.
-        # The frontend UI displays different categories ('Fraudulent', 'Critical', 'High', etc.).
-        # The backend's analyze_url sets the 'risk_level' string based on prediction and confidence.
-        # It also sets the 'is_fraud' boolean flag.
-        # The stats endpoint /analysis-stats in app.py calls THIS function (get_risk_level_counts).
-        # The goal is for THIS function to return counts that match the categories displayed in the UI chart.
-        # The UI chart labels are ['Critical', 'High', 'Medium', 'Low', 'Safe', 'Fraudulent', 'Unknown', 'Error', 'Invalid Result'].
-        # The backend analysis sets 'risk_level' to Critical/High/Medium/Low/Safe/Unknown/Error. It ALSO sets 'is_fraud'.
-        # The UI badge logic prioritizes 'is_fraud=true' to show 'Fraudulent'.
-        # The stats chart should probably show counts for the 'risk_level' string as determined by the backend, PLUS a separate count for 'Fraudulent' items.
-
-        # Let's define the query to aggregate counts based on the 'risk_level' string.
-        # Include a case for 'Fraudulent' based on the 'is_fraud' boolean flag if needed,
-        # but the current UI chart seems to just want counts by the 'risk_level' string values directly from the JSON.
-        # Reverting to a single query that counts by the 'risk_level' string.
+        # Query to count items grouped by the 'risk_level' string from the JSON.
+        # Use JSON_EXTRACT and add a JSON_TYPE check to ensure we only attempt to process valid strings.
         query = """
         SELECT
-            CAST(JSON_EXTRACT(analysis_result, '$.risk_level') AS CHAR) as risk_level,
+            JSON_EXTRACT(analysis_result, '$.risk_level') as risk_level_extracted, -- Extract the JSON string value
             COUNT(*) as count
         FROM analysis_history
         WHERE user_id = %s
-          AND JSON_EXTRACT(analysis_result, '$.risk_level') IS NOT NULL -- Only count items where risk_level key/value exists
-          AND CAST(JSON_EXTRACT(analysis_result, '$.risk_level') AS CHAR) IN ('Critical', 'High', 'Medium', 'Low', 'Safe', 'Unknown', 'Error') -- Add 'Error' here
-        GROUP BY risk_level;
-        """
-        # Query 2: Count items where is_fraud is true - this is needed if UI wants 'Fraudulent' as a separate category
-        query_is_fraud = """
-        SELECT COUNT(*) as count
-        FROM analysis_history
-        WHERE user_id = %s
-          AND CAST(JSON_EXTRACT(analysis_result, '$.is_fraud') AS CHAR) = 'true'; -- Explicitly filter fraud items
+          AND JSON_EXTRACT(analysis_result, '$.risk_level') IS NOT NULL -- Ensure risk_level key/value exists and is not NULL
+          AND JSON_TYPE(JSON_EXTRACT(analysis_result, '$.risk_level')) = 'STRING' -- ONLY count items where the extracted value is a JSON string
+        GROUP BY JSON_EXTRACT(analysis_result, '$.risk_level'); -- Group by the extracted JSON string value
         """
 
-
-        cursor = connection.cursor(dictionary=True) # Fetch results as dictionaries
-
-        # Execute Query 1: Get counts by risk level string (excluding explicit 'Fraudulent' if backend doesn't set that string)
-        logger.debug(f"Executing risk level counts query (by string) for user {user_id_int}")
+        logger.debug(f"Executing risk level counts query (using JSON_EXTRACT and TYPE check) for user {user_id_int}")
         cursor.execute(query, (user_id_int,))
-        risk_level_results = cursor.fetchall()
-        for row in risk_level_results:
-            # Add results to the dictionary. Ensure risk_level key exists and is non-empty string.
-            if row.get('risk_level'):
-                 risk_counts[row['risk_level']] = row.get('count', 0) # Use .get('count', 0) for safety
+        results = cursor.fetchall()
+
+        # Process the results to populate the risk_counts dictionary.
+        # The keys will be the *unquoted* risk level strings.
+        for row in results:
+            # Get the extracted value. It should be a string because of JSON_TYPE filter.
+            # It might still have surrounding quotes depending on MySQL/Connector.
+            level_extracted = row.get('risk_level_extracted', None)
+            count = row.get('count', 0)
+
+            if level_extracted is not None:
+                 # Remove potential surrounding quotes using strip('"')
+                 level_cleaned = str(level_extracted).strip('"') # Ensure it's treated as a string first
+                 # Add or update the count for the cleaned risk level string in our dictionary
+                 # Use get() with default 0 in case a level appears in results but wasn't in our initial dict keys (unlikely with JSON_TYPE check, but safe)
+                 risk_counts[level_cleaned] = risk_counts.get(level_cleaned, 0) + count
 
 
-        # Execute Query 2: Get count for fraudulent items (based on is_fraud boolean)
-        logger.debug(f"Executing is_fraud counts query (fraud) for user {user_id_int}")
-        cursor.execute(query_is_fraud, (user_id_int,))
-        is_fraud_result = cursor.fetchone() # Fetch a single row (the count)
-        if is_fraud_result and is_fraud_result.get('count', 0) > 0:
-            # If there are fraudulent items, add their count under the key 'Fraudulent'.
-            # This ensures the 'Fraudulent' category appears in the stats.
-            risk_counts['Fraudulent'] = risk_counts.get('Fraudulent', 0) + is_fraud_result.get('count', 0) # Add to any items already counted under a risk_level string if needed, or just use the explicit fraud count. Let's use the explicit fraud count.
-            risk_counts['Fraudulent'] = is_fraud_result.get('count', 0)
-
+        # At this point, risk_counts contains the counts for all 'STRING' risk_levels found in the database.
+        # It already includes 0 counts for expected categories that weren't found.
+        # Ensure any categories found that were *not* in our initial expected list are also included.
+        # This handles cases if the model ever assigns a new, unexpected risk_level string.
+        # This loop is now correctly adding to the initialized dictionary `risk_counts`.
 
         logger.info(f"Risk level counts fetched for user {user_id_int}: {risk_counts}")
         return risk_counts # Return the dictionary of counts
+
 
     except ValueError as e:
         # Catch error if user_id is not a valid integer.
@@ -1022,14 +720,16 @@ def get_risk_level_counts(user_id):
     except mysql.connector.Error as e:
         # Catch specific MySQL connector errors during query execution or fetch.
         logger.error(f"MySQL Error fetching risk level counts for user {user_id}: {e}", exc_info=True)
-        return {} # Return empty dict on DB error
+        # If there's a DB error, return the dictionary initialized with 0s for expected categories.
+        return {category: 0 for category in expected_chart_categories} # Return empty/zeroed dict on DB error
 
     except Exception as e: # Catch any other unexpected exceptions
         logger.exception(f"Unexpected Error fetching risk level counts for user {user_id}.") # Log with traceback
-        return {} # Return empty dict on unexpected error
+        # On unexpected error, return the dictionary initialized with 0s.
+        return {category: 0 for category in expected_chart_categories} # Return empty/zeroed dict on unexpected error
 
     finally:
-        # Close cursor and connection.
+        # Ensure cursor and connection are closed in all cases.
         if cursor:
             cursor.close()
         if connection and connection.is_connected():
@@ -1213,6 +913,7 @@ def delete_user_by_id(user_id):
         if connection and connection.is_connected():
             # logger.debug("Closing database connection in delete_user_by_id.") # Optional debug log
             connection.close()
+
 
 # --- ADDED: Function to Append Data to Training File ---
 def append_training_data(file_path, item_data, label):
