@@ -1027,6 +1027,8 @@ if st.session_state['logged_in']:
              st.write("Risk Level Distribution:")
              # Convert the stats dictionary into a pandas DataFrame for charting with Altair.
              # Use .items() to get (key, value) pairs, then create DataFrame columns.
+             # Filter out categories with 0 count for a cleaner chart if preferred,
+             # or keep them so all possible legend items are always shown. Keeping them here.
              risk_stats_df = pd.DataFrame(list(st.session_state['risk_level_stats'].items()), columns=['Risk Level', 'Count'])
 
              # Create an Altair chart (Bar chart).

@@ -1,5 +1,3 @@
-# D:\Projects\Fraud Detection using ML\Fraud_detection_using_ML\Python scripts\app.py
-
 # This script is the Flask backend API for the Fraud Detection System.
 # It handles user authentication, analysis requests, history management,
 # and data visualization statistics.
@@ -15,6 +13,7 @@ import time # Used for time-related operations (e.g., timestamps in export filen
 import csv # Used for working with CSV data (export)
 import traceback # Used for printing detailed error information in logs
 from datetime import timedelta # Used for defining session lifetime
+import logging
 
 # --- Third-Party Library Imports ---
 # Ensure these are in your pyproject.toml and installed (uv sync or uv pip install .)
@@ -302,7 +301,13 @@ def analyze_url():
         if not result or result.get('risk_level') == 'Error':
              logger.error(f"URL analysis failed for user {current_user.id}, URL: {url[:100]}... Detector result: {result}")
              # Extract a user-friendly error message from the detector's result if possible.
-             error_msg = result.get('risk_factors', ["Analysis failed to produce a valid result."])[0] if result and result.get('risk_factors') else "Analysis failed to produce a valid result."
+             # Also include a generic fallback message.
+             error_msg = "Analysis failed."
+             if result and result.get('risk_factors'):
+                  error_msg = result['risk_factors'][0] # Use the first risk factor as the primary message
+             else:
+                  error_msg += " Received an unexpected result format from the detector."
+             # Return a client-friendly message and log more detail on backend
              return jsonify({'error': error_msg}), 500 # Internal Server Error (since detector failed)
 
 
@@ -328,7 +333,9 @@ def analyze_url():
     except Exception as e:
         # Catch any unexpected exceptions during the route handling (e.g., problems with request.get_json).
         # Detector's internal errors are caught and handled within the detector itself.
-        logger.exception(f"Unexpected error during analyze-url route for user {current_user.id}, URL: {url[:100]}...") # Log error with traceback
+        # Ensure URL variable is defined before using it in logging if it's not the source of the exception
+        url_for_log = data.get('url', 'N/A') if 'data' in locals() else 'N/A'
+        logger.exception(f"Unexpected error during analyze-url route for user {current_user.id}, URL: {url_for_log[:100]}...") # Log error with traceback
         return jsonify({'error': 'An internal server error occurred during analysis.'}), 500 # Generic error response
 
 
@@ -337,6 +344,7 @@ def analyze_url():
 def analyze_qr():
     """API endpoint to analyze a QR code image for potential fraud."""
     logger.debug(f"Received analyze-qr request for user ID: {current_user.id}")
+    uploaded_file_name = 'N/A' # Initialize for error logging
     try:
         # Check if a file named 'file' is present in the request (expected from FormData).
         if 'file' not in request.files:
@@ -345,6 +353,7 @@ def analyze_qr():
 
         # Get the file from the request
         file = request.files['file']
+        uploaded_file_name = file.filename # Store filename for potential error logging
 
         # Check if the file is empty
         if file.filename == '':
@@ -361,14 +370,14 @@ def analyze_qr():
 
         # Check if any QR codes were found in the image.
         if not qr_codes:
-            logger.warning(f"No QR code found in uploaded image for user {current_user.id}, filename: {file.filename}.")
+            logger.warning(f"No QR code found in uploaded image for user {current_user.id}, filename: {uploaded_file_name}.")
             return jsonify({'error': 'No QR code found in the image.'}), 400 # Bad Request
 
         # Assume the first decoded QR code contains the relevant data (URL).
         # Decode the data (bytes) to a string (assuming UTF-8).
         url = qr_codes[0].data.decode('utf-8')
 
-        logger.debug(f"Decoded QR code for user {current_user.id}, filename {file.filename}: {url[:100]}...")
+        logger.debug(f"Decoded QR code for user {current_user.id}, filename {uploaded_file_name}: {url[:100]}...")
 
         # Analyze the decoded URL using the fraud detector.
         # The detector's analyze_url method handles its own errors and returns a specific format.
@@ -378,7 +387,12 @@ def analyze_qr():
         if not result or result.get('risk_level') == 'Error':
              logger.error(f"QR analysis failed for user {current_user.id}, decoded URL: {url[:100]}... Detector result: {result}")
              # Extract a user-friendly error message from the detector's result if possible.
-             error_msg = result.get('risk_factors', ["Analysis of QR content failed."])[0] if result and result.get('risk_factors') else "Analysis of QR content failed."
+             error_msg = "Analysis failed."
+             if result and result.get('risk_factors'):
+                  error_msg = result['risk_factors'][0] # Use the first risk factor as the primary message
+             else:
+                  error_msg += " Received an unexpected result format from the detector."
+             # Return a client-friendly message and log more detail on backend
              return jsonify({'error': error_msg}), 500 # Internal Server Error
 
 
@@ -388,7 +402,7 @@ def analyze_qr():
         # Save the analysis result to database history.
         user_id = current_user.id
         # Use the decoded URL or filename as item_data for history display.
-        item_data = f"QR Code ({url[:100]}...)" if url else f"QR Code from {file.filename}" # Truncate long URLs for history item data string
+        item_data = f"QR Code ({url[:100]}...)" if url else f"QR Code from {uploaded_file_name}" # Truncate long URLs for history item data string
         # db_handler.save_analysis_result returns ID on success, False on failure. It logs internally.
         save_success_id = db_handler.save_analysis_result(user_id, 'qr', item_data, result)
 
@@ -406,7 +420,7 @@ def analyze_qr():
 
     except Exception as e:
         # Catch any unexpected exceptions during the route handling (e.g., Pillow errors, pyzbar errors).
-        logger.exception(f"Unexpected error during analyze-qr route for user {current_user.id}, filename: {file.filename if 'file' in locals() else 'N/A'}.") # Log with traceback
+        logger.exception(f"Unexpected error during analyze-qr route for user {current_user.id}, filename: {uploaded_file_name}.") # Log with traceback
         return jsonify({'error': 'An internal server error occurred during QR analysis.'}), 500 # Generic error response
 
 
@@ -752,6 +766,7 @@ def submit_feedback():
 
         # Call the function in the database handler to append the feedback data to the file.
         # This function handles file operations and logs file writing errors internally.
+        # Note: db_handler.append_training_data is now called here.
         success = db_handler.append_training_data(training_data_file_path, item_data, label)
 
         if success:
@@ -802,6 +817,7 @@ if __name__ == '__main__':
              # Pass the file path to train_model. train_model calls load_real_data internally.
              if detector.train_model(data_path=real_data_file_path_for_app):
                  logger.info("Model training with real data completed successfully.")
+                 logger.info(f"Attempting to save the newly trained model and scaler to '{MODEL_DIR}'.")
                  if detector.save_model():
                       logger.info("Trained model and scaler saved successfully.")
                       model_ready = True

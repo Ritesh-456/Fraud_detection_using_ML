@@ -1,5 +1,3 @@
-# D:\Projects\Fraud Detection using ML\Fraud_detection_using_ML\Notebook\fraud_detection_model_.py
-
 # This script contains the core machine learning model logic for fraud detection.
 # It includes feature extraction, model training, saving, loading, and analysis functions.
 
@@ -13,7 +11,9 @@ import os
 import sys
 import math
 import subprocess
+import logging
 import urllib.parse # Used for parsing URLs into components
+from datetime import datetime # Added for calculating domain age
 
 # --- Third-Party Library Imports ---
 # Ensure these are in your pyproject.toml and installed (uv sync or uv pip install .)
@@ -32,14 +32,35 @@ import joblib
 # collections (For counting elements)
 from collections import Counter
 
+# For domain information lookup (like age) - Ensure 'python-whois' is installed
+try:
+    import whois
+    HAS_WHOIS = True
+    logger = logging.getLogger(__name__) # Ensure logger is defined before use
+    logger.debug("python-whois imported successfully.")
+except ImportError:
+    HAS_WHOIS = False
+    logger = logging.getLogger(__name__) # Ensure logger is defined even if import fails
+    logger.warning("python-whois not installed or import failed. Domain age features will be unavailable.")
+except Exception as e: # Catch other potential import issues
+    HAS_WHOIS = False
+    logger = logging.getLogger(__name__)
+    logger.exception("Unexpected error importing python-whois.")
+
+
 # Optional: OpenCV (cv2) for more advanced image processing if needed for QR codes.
 import logging # Ensure logging is imported
 logger = logging.getLogger(__name__) # Get logger for this module
 try:
     import cv2
+    HAS_CV2 = True # Use a clear constant for check
     logger.debug("OpenCV imported successfully.")
 except ImportError:
+    HAS_CV2 = False
     logger.warning("OpenCV import failed. Advanced QR code features (if implemented) might be limited.")
+except Exception as e:
+    HAS_CV2 = False
+    logger.exception("Unexpected error importing OpenCV.")
 
 
 # --- Model Saving/Loading Paths ---
@@ -55,13 +76,16 @@ os.makedirs(MODEL_DIR, exist_ok=True)
 # --- Feature Names Definition ---
 # Define a global list of the names of features extracted from URLs.
 # This list must exactly match the order and count of features returned by _extract_link_features.
+# --- MODIFIED: Added two hypothetical features ---
 feature_names = [
     "length", "num_dots", "num_slashes", "num_digits", "has_https",
     "has_http", "has_ip", "has_at_symbol", "has_double_slash_after_protocol",
     "keyword_count", "domain_length", "has_suspicious_tld", "entropy",
-    "path_length", "has_query", "has_fragment"
+    "path_length", "has_query", "has_fragment",
+    "domain_age_days", # <-- ADDED Feature 1
+    "is_young_domain"  # <-- ADDED Feature 2 (e.g., less than 90 days old)
 ]
-EXPECTED_FEATURE_COUNT = len(feature_names)
+EXPECTED_FEATURE_COUNT = len(feature_names) # This will now be 18
 
 
 class HybridFraudDetector:
@@ -77,7 +101,9 @@ class HybridFraudDetector:
         self.qr_scaler = None
         self.confidence_threshold = 0.7
 
-        self.has_cv2 = 'cv2' in sys.modules
+        # Use the constants for clarity
+        self.has_cv2 = HAS_CV2
+        self.has_whois = HAS_WHOIS
 
         if os.path.exists(MODEL_FILE) and os.path.exists(SCALER_FILE):
             logger.info(f"Found existing trained model and scaler files at '{MODEL_DIR}'.")
@@ -129,6 +155,9 @@ class HybridFraudDetector:
                       domain = domain.split('@')[-1]
                  if ':' in domain:
                       domain = domain.split(':')[0]
+                 # Clean up domain: remove www. prefix
+                 if domain.startswith('www.'):
+                      domain = domain[4:]
             except Exception as e:
                  logger.debug(f"Could not parse domain from URL {url[:100]}... during feature extraction: {e}")
                  domain = ''
@@ -147,14 +176,45 @@ class HybridFraudDetector:
 
             domain_no_tld = '.'.join(domain.split('.')[:-1]) if domain and len(domain.split('.')) > 1 else domain
             domain_no_tld = domain_no_tld.replace('.', '')
+            # Calculate entropy only if domain_no_tld is not empty
             probs = [domain_no_tld.count(c) / len(domain_no_tld) for c in set(domain_no_tld)] if domain_no_tld else []
             entropy = -sum(p * math.log2(p) for p in probs) if probs else 0
 
+
+            # --- ADDED: Domain Age Features (Using python-whois) ---
+            domain_age_days = 0 # Default if whois fails or domain lookup is impossible
+            is_young_domain = 0 # Default
+
+            # Only attempt whois lookup if domain is valid and whois library is available
+            if domain and '.' in domain and self.has_whois:
+                 try:
+                      w = whois.whois(domain)
+                      if w.creation_date:
+                           # whois.whois can return a list of dates; take the first one
+                           creation_date = w.creation_date[0] if isinstance(w.creation_date, list) else w.creation_date
+                           if isinstance(creation_date, datetime): # Ensure it's a datetime object
+                                delta = datetime.now() - creation_date
+                                domain_age_days = max(0, delta.days) # Age in days, minimum 0
+                                is_young_domain = int(domain_age_days < 90) # Example threshold: less than 90 days old
+                                logger.debug(f"Domain {domain} created on {creation_date}, age: {domain_age_days} days.")
+                           else:
+                               logger.debug(f"WHOIS creation date for {domain} is not a datetime object: {creation_date}")
+                      else:
+                           logger.debug(f"WHOIS data for {domain} does not contain creation_date.")
+                 except Exception as e:
+                      logger.debug(f"WHOIS lookup failed for {domain}: {e}")
+            else:
+                if not self.has_whois:
+                    logger.debug("Skipping WHOIS lookup: python-whois library not available.")
+                # Domain age remains 0, is_young_domain remains 0 if domain is invalid or whois fails
+                pass
+            # --- END ADDED ---
+
+
             # TODO: Add Advanced Domain Features here (Requires external libraries/APIs)
             # Example placeholders (need actual implementation):
-            # domain_age = self._get_domain_age(domain)
-            # is_known_malicious_domain = self._check_domain_blacklist(domain)
-            # domain_has_mx = self._check_mx_records(domain)
+            # is_known_malicious_domain = self._check_domain_blacklist(domain) # Requires API lookup
+            # domain_has_mx = self._check_mx_records(domain) # Requires DNS lookup
 
 
             # 4. Path and Query Features
@@ -172,14 +232,14 @@ class HybridFraudDetector:
 
             # TODO: Add Content-based Features here (Requires fetching the page content)
             # Example placeholders:
-            # page_content = self._fetch_page_content(url)
+            # page_content = self._fetch_page_content(url) # Requires network request
             # has_login_form = self._check_for_login_form(page_content)
             # content_has_keywords = sum(1 for kw in suspicious_keywords if kw in page_content.lower())
             # page_similarity_score = self._compare_to_known_sites(page_content, domain)
 
 
             # TODO: Add Redirect Features (Requires making network requests)
-            # final_url, num_redirects = self._follow_redirects(url)
+            # final_url, num_redirects = self._follow_redirects(url) # Requires network request
             # final_url_is_different = int(url != final_url)
             # final_domain_is_suspicious = self._extract_link_features(final_url).get('has_suspicious_tld', 0)
 
@@ -201,21 +261,27 @@ class HybridFraudDetector:
                 path_length,
                 has_query,
                 has_fragment,
-                # TODO: Add your new feature variables here in the same order every time
+                domain_age_days, # <-- ADDED Feature 1 Value
+                is_young_domain  # <-- ADDED Feature 2 Value
+                # TODO: Add your new feature variables here in the same order as feature_names
                 # domain_age, is_known_malicious_domain, domain_has_mx, ...
                 # has_risky_extension, query_string_length, num_query_params, ...
                 # has_login_form, content_has_keywords, page_similarity_score, ...
                 # final_url_is_different, num_redirects, final_domain_is_suspicious, ...
             ]
 
+            # --- CHECK: Verify the number of extracted features matches the defined count ---
             if len(features) != EXPECTED_FEATURE_COUNT:
                 logger.error(f"Feature extraction resulted in incorrect number of features for URL {url[:100]}... Expected {EXPECTED_FEATURE_COUNT}, got {len(features)}. Check _extract_link_features and feature_names list.")
+                # Return a list of zeros matching the expected count to prevent further errors
                 return [0.0] * EXPECTED_FEATURE_COUNT
 
+            # Return features as floats
             return [float(f) for f in features]
 
         except Exception as e:
             logger.exception(f"Critical Error during feature extraction from URL {url[:100]}...")
+            # On critical error during extraction, return a list of zeros matching the expected count
             return [0.0] * EXPECTED_FEATURE_COUNT
 
     # TODO: Implement new feature extraction helper methods (if adding advanced features)
@@ -252,7 +318,8 @@ class HybridFraudDetector:
             # Example using pandas to read CSV:
             # Ensure you have pandas installed (`uv pip install pandas`)
             try:
-                df = pd.read_csv(file_path)
+                # Use low_memory=False for potentially large CSVs
+                df = pd.read_csv(file_path, low_memory=False)
             except Exception as e:
                 logger.error(f"Error reading data file '{file_path}': {e}")
                 return [], []
@@ -263,10 +330,22 @@ class HybridFraudDetector:
                 return [], []
 
             # Extract the 'url' and 'label' columns as lists
-            urls = df['url'].tolist()
-            labels = df['label'].tolist()
-            # Ensure labels are integers (0 or 1)
-            labels = [int(label) for label in labels]
+            # Use .dropna() to handle potential missing values in these columns
+            df_cleaned = df[['url', 'label']].dropna()
+            urls = df_cleaned['url'].tolist()
+            labels = df_cleaned['label'].tolist()
+
+            # Ensure labels are integers (0 or 1). Convert potential floats (e.g., from CSV)
+            try:
+                 labels = [int(float(label)) for label in labels] # Handle cases like 1.0 from CSV
+                 # Basic validation: ensure labels are 0 or 1
+                 if not all(label in [0, 1] for label in labels):
+                      logger.error(f"Data file '{file_path}' contains invalid label values (must be 0 or 1).")
+                      return [], []
+            except ValueError:
+                 logger.error(f"Data file '{file_path}' contains non-integer label values.")
+                 return [], []
+
 
             # --- END YOUR IMPLEMENTATION ---
 
@@ -406,8 +485,15 @@ class HybridFraudDetector:
                  self.link_scaler = None
                  return False
 
+            # --- CHECK: Verify the number of features the loaded scaler expects ---
             if hasattr(self.link_scaler, 'n_features_in_') and self.link_scaler.n_features_in_ != EXPECTED_FEATURE_COUNT:
-                 logger.warning(f"Loaded scaler expects {self.link_scaler.n_features_in_} features, but current feature extraction code expects {EXPECTED_FEATURE_COUNT}. This might cause errors. Consider retraining or checking code/model version.")
+                 # This is the check that triggered the error you saw.
+                 logger.error(f"Loaded scaler expects {self.link_scaler.n_features_in_} features, but current feature extraction code expects {EXPECTED_FEATURE_COUNT}. This might cause errors. Consider retraining or checking code/model version.")
+                 # Optionally, you could decide to return False here to prevent using an incompatible model:
+                 # self.link_model = None
+                 # self.link_scaler = None
+                 # return False
+                 # Keeping it as True for now allows the analysis function to return an 'Error' result, which is also handled.
 
             logger.debug(f"Loaded model type: {type(self.link_model)}, Scaler type: {type(self.link_scaler)}")
             return True
@@ -450,12 +536,27 @@ class HybridFraudDetector:
 
             logger.info("Extracting features for the training dataset...")
             # Use the _extract_link_features method for consistency. It handles its own errors and returns zeros on critical failure.
-            X = np.array([self._extract_link_features(url) for url in urls])
-            y = np.array(labels)
+            # List comprehension to extract features for each URL.
+            extracted_features_list = [self._extract_link_features(url) for url in urls]
 
-             # Check if the feature matrix has the expected number of columns/features
+            # Filter out any rows that might have resulted in an incorrect number of features due to errors
+            # (Although _extract_link_features is designed to return correct size, this adds robustness)
+            valid_features_labels = [(f, labels[i]) for i, f in enumerate(extracted_features_list) if len(f) == EXPECTED_FEATURE_COUNT]
+
+            if not valid_features_labels:
+                 logger.error("Feature extraction failed for all samples or resulted in incorrect feature counts.")
+                 self.link_model = None
+                 self.link_scaler = None
+                 return False
+
+            # Separate features and labels for the valid samples
+            X = np.array([item[0] for item in valid_features_labels])
+            y = np.array([item[1] for item in valid_features_labels])
+
+            # Check if the feature matrix has the expected number of columns/features
             if X.shape[1] != EXPECTED_FEATURE_COUNT:
-                  logger.error(f"Error: Feature matrix shape mismatch after extraction. Expected {EXPECTED_FEATURE_COUNT} columns, but got {X.shape[1]}.")
+                  # This check should ideally not be triggered if _extract_link_features returns correct size
+                  logger.error(f"Internal Error: Feature matrix shape mismatch after filtering extracted features. Expected {EXPECTED_FEATURE_COUNT} columns, but got {X.shape[1]}.")
                   self.link_model = None
                   self.link_scaler = None
                   return False
@@ -466,14 +567,29 @@ class HybridFraudDetector:
                  self.link_scaler = None
                  return False
 
-            logger.info(f"Training data shape: X={X.shape}, y={y.shape}")
+            logger.info(f"Training data shape after extraction and filtering: X={X.shape}, y={y.shape}")
 
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
+            # Check if there are samples for both classes for stratification
+            if len(np.unique(y)) < 2:
+                 logger.warning("Training data contains only one class. Cannot perform stratified split. Proceeding with simple split.")
+                 # Fallback to simple split if only one class is present
+                 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
+            else:
+                 # Perform stratified split to maintain class distribution
+                 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
+
 
             logger.info("Initializing and fitting StandardScaler on training data...")
             self.link_scaler = StandardScaler()
             X_train_scaled = self.link_scaler.fit_transform(X_train)
             X_test_scaled = self.link_scaler.transform(X_test)
+
+            # Double check scaler features count after fitting (should match EXPECTED_FEATURE_COUNT)
+            if hasattr(self.link_scaler, 'n_features_in_') and self.link_scaler.n_features_in_ != EXPECTED_FEATURE_COUNT:
+                 logger.error(f"Scaler fitted with {self.link_scaler.n_features_in_} features, but expected {EXPECTED_FEATURE_COUNT}. Fatal error.")
+                 self.link_model = None
+                 self.link_scaler = None
+                 return False
 
 
             logger.info("Initializing and training RandomForestClassifier model...")
@@ -492,25 +608,34 @@ class HybridFraudDetector:
 
             logger.info("Evaluating model performance on the test set...")
             if X_test_scaled.size > 0:
-                y_pred = self.link_model.predict(X_test_scaled)
+                # Ensure test set has features (shape[1] > 0) before predicting
+                if X_test_scaled.shape[1] > 0:
+                     y_pred = self.link_model.predict(X_test_scaled)
 
-                accuracy = accuracy_score(y_test, y_pred)
-                precision = precision_score(y_test, y_pred, zero_division=0)
-                recall = recall_score(y_test, y_pred, zero_division=0)
-                f1 = f1_score(y_test, y_pred, zero_division=0)
+                     accuracy = accuracy_score(y_test, y_pred)
+                     precision = precision_score(y_test, y_pred, zero_division=0)
+                     recall = recall_score(y_test, y_pred, zero_division=0)
+                     f1 = f1_score(y_test, y_pred, zero_division=0)
 
 
-                logger.info("\nFraud Detection Metrics (on test set):")
-                logger.info(f"Accuracy: {accuracy:.4f}")
-                logger.info(f"Precision (Fraudulent): {precision:.4f}")
-                logger.info(f"Recall (Fraudulent): {recall:.4f}")
-                logger.info(f"F1-Score (Fraudulent): {f1:.4f}")
+                     logger.info("\nFraud Detection Metrics (on test set):")
+                     logger.info(f"Accuracy: {accuracy:.4f}")
+                     logger.info(f"Precision (Fraudulent): {precision:.4f}")
+                     logger.info(f"Recall (Fraudulent): {recall:.4f}")
+                     logger.info(f"F1-Score (Fraudulent): {f1:.4f}")
 
-                logger.info("\nClassification Report (on test set):\n" + classification_report(y_test, y_pred, zero_division=0))
-                logger.info("\nConfusion Matrix (on test set):\n" + str(confusion_matrix(y_test, y_pred)))
+                     # Add classification report and confusion matrix only if test set is not empty and contains both classes
+                     if len(np.unique(y_test)) > 1:
+                          logger.info("\nClassification Report (on test set):\n" + classification_report(y_test, y_pred, zero_division=0))
+                          logger.info("\nConfusion Matrix (on test set):\n" + str(confusion_matrix(y_test, y_pred)))
+                     else:
+                          logger.warning("Test set contains only one class. Cannot generate full classification report or confusion matrix.")
+
+                else:
+                     logger.warning("Test set is empty after scaling. Skipping model evaluation metrics.")
 
             else:
-                logger.warning("Test set is empty (likely due to small n_samples). Skipping model evaluation metrics.")
+                logger.warning("Test set is empty (likely due to small data size or feature extraction issues). Skipping model evaluation metrics.")
 
             return True
 
@@ -534,18 +659,27 @@ class HybridFraudDetector:
                      'risk_factors': ["Analysis model is not trained or loaded. Please ensure the backend started correctly."]
                  }
 
+            # Extract features. _extract_link_features handles its own errors and logging.
             features = np.array([self._extract_link_features(url)])
 
-            if features.shape[1] != self.link_scaler.n_features_in_ or not np.isfinite(features).all():
-                 if features.shape[1] != self.link_scaler.n_features_in_:
-                     logger.error(f"Analysis failed: Feature count mismatch for URL '{url[:100]}...'. Scaler expects {self.link_scaler.n_features_in_} features, but extraction returned {features.shape[1]}. Check code/model-data sync.")
-                 elif not np.isfinite(features).all():
-                     logger.error(f"Analysis failed: Extracted features for URL '{url[:100]}...' contain non-finite values (NaN, Inf). Features: {features}")
+            # --- CHECK: Verify the number of extracted features matches the scaler's expectation ---
+            # This is the check that failed previously. With the code modified to have 18 features,
+            # and after retraining, the loaded scaler will also expect 18 features, so this check should pass.
+            if features.shape[1] != self.link_scaler.n_features_in_:
+                logger.error(f"Analysis failed: Feature count mismatch for URL '{url[:100]}...'. Scaler expects {self.link_scaler.n_features_in_} features, but extraction returned {features.shape[1]}. Check code/model-data sync.")
+                return {
+                     'url': url, 'is_fraud': False, 'confidence': 0, 'risk_level': 'Error',
+                     'risk_factors': [f"Analysis failed: Feature extraction issue detected ({features.shape[1]} features extracted, scaler expects {self.link_scaler.n_features_in_}). Please check backend logs and ensure the model is trained with the current code."]
+                  }
 
+            # Check for non-finite values before scaling
+            if not np.isfinite(features).all():
+                 logger.error(f"Analysis failed: Extracted features for URL '{url[:100]}...' contain non-finite values (NaN, Inf). Features: {features}")
                  return {
                       'url': url, 'is_fraud': False, 'confidence': 0, 'risk_level': 'Error',
-                      'risk_factors': ["Analysis failed: Feature extraction issue detected. Please check backend logs."]
+                      'risk_factors': ["Analysis failed: Feature extraction resulted in invalid numerical values. Please check backend logs."]
                    }
+
 
             features_scaled = self.link_scaler.transform(features)
 
@@ -567,16 +701,19 @@ class HybridFraudDetector:
                  else:
                       risk_level = 'Medium'
 
-            else:
+            else: # Not Fraudulent
                  if confidence >= 95:
                      risk_level = 'Safe'
                  elif confidence >= 80:
                      risk_level = 'Low'
                  else:
-                      risk_level = 'Medium'
+                      risk_level = 'Medium' # Can be Medium if confidence is between 50-80% for 'Not Fraudulent'
 
 
+            # --- Risk Factors Heuristic Logic ---
+            # Extract features again as a dictionary for easier access by name
             risk_factors = []
+            # Ensure features were extracted correctly before accessing by name
             if features.shape[0] > 0 and features.shape[1] == EXPECTED_FEATURE_COUNT:
                 extracted_features_dict = dict(zip(feature_names, features[0]))
 
@@ -601,7 +738,7 @@ class HybridFraudDetector:
 
                 domain_len = extracted_features_dict.get("domain_length", 0)
                 entropy_val = extracted_features_dict.get("entropy", 0)
-                if domain_len > 20 and entropy_val < 3.5:
+                if domain_len > 20 and entropy_val < 3.5: # Example thresholds
                       risk_factors.append(f"Low domain entropy ({entropy_val:.2f}) for its length ({domain_len})")
 
                 if extracted_features_dict.get("path_length", 0) > 60:
@@ -610,8 +747,27 @@ class HybridFraudDetector:
                 if extracted_features_dict.get("has_query", 0):
                     risk_factors.append("URL includes a query string")
 
+                # --- ADDED: Risk factors based on new features ---
+                domain_age_days_val = extracted_features_dict.get("domain_age_days", -1) # Use -1 to indicate not found or error
+                is_young_domain_val = extracted_features_dict.get("is_young_domain", 0)
+
+                if is_young_domain_val == 1: # Check the binary feature
+                    risk_factors.append(f"Domain is very young ({domain_age_days_val} days old, < 90 days threshold)")
+                elif domain_age_days_val > 0 and domain_age_days_val < 365: # Or a different threshold for a softer warning
+                    risk_factors.append(f"Domain is relatively young ({domain_age_days_val} days old)")
+                # No risk factor added if domain_age_days_val is 0 (lookup failed or IP address)
+
+                # Add more heuristic rules based on other features as needed.
+                # --- END ADDED ---
+
+
+            # Add a final factor indicating the model's decision if it aligns with fraud
+            # This clarifies *why* the risk level might be High/Critical even if few heuristics fire.
             if is_fraud_flag and not any("Flagged as fraudulent by the model" in factor for factor in risk_factors):
                  risk_factors.append("Flagged as fraudulent by the machine learning model based on learned patterns")
+            # If the model *predicted* non-fraud but some heuristics fired, you might add a factor like:
+            # elif not is_fraud_flag and risk_factors and confidence < 90:
+            #      risk_factors.append("Heuristic factors identified despite model predicting non-fraudulent")
 
 
             return {
@@ -619,12 +775,15 @@ class HybridFraudDetector:
                 'is_fraud': is_fraud_flag,
                 'confidence': round(confidence, 2),
                 'risk_level': risk_level,
+                # Use the original URL as item_data for history saving if it's not too long, otherwise use a snippet + type
+                # The backend's save_analysis_result determines the item_data string saved.
+                # The 'url' key in the result dict is primarily for the frontend to display what was analyzed.
                 'risk_factors': risk_factors if risk_factors else ["No specific heuristic risk factors identified"]
             }
         except Exception as e:
             logger.exception(f"Critical Error during analyze_url for URL '{url[:100]}...'.")
             return {
-                'url': url,
+                'url': url, # Return the original URL even on error
                 'is_fraud': False,
                 'confidence': 0,
                 'risk_level': 'Error',
@@ -651,6 +810,7 @@ if __name__ == "__main__":
     # Configure logging for this standalone script run.
     logging.basicConfig(level=logging.DEBUG,
                         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    # Re-get the logger instance after basicConfig, ensures it uses the new configuration.
     logger = logging.getLogger(__name__)
     logger.info("Logging configured for standalone model testing.")
 
@@ -658,13 +818,22 @@ if __name__ == "__main__":
 
     model_ready = False
     logger.info(f"Attempting to load the fraud detection model and scaler from '{MODEL_DIR}'.")
+    # The load_model function will now check against the new EXPECTED_FEATURE_COUNT (18).
+    # If the *existing* files were trained with 16 features, load_model will log an ERROR
+    # but still return True (as implemented), or False if you change the load_model logic.
+    # If load_model returns True, the code proceeds to analyze, but the feature count mismatch
+    # will be detected *within* the analyze_url method.
     if detector.load_model():
-        logger.info("Successfully loaded existing model and scaler.")
+        logger.info("Successfully loaded existing model and scaler (may still have feature count mismatch if trained with older code).")
         model_ready = True
 
-    else:
-        logger.warning("Existing model or scaler not found or loading failed. Proceeding to model training.")
-        # --- Modified to train with a data file if available ---
+    # Regardless of whether loading was successful (due to the mismatch), we should
+    # attempt to *retrain* with the *current* code if model_ready is False.
+    # Alternatively, always force retraining here for a clean test run:
+    # if True: # Uncomment this line to force retraining every time the script is run directly
+    if not model_ready:
+        logger.warning("Existing model or scaler not found or loading failed. Proceeding to model training with CURRENT CODE.")
+        # --- Configure training data source for app startup ---
         # Define the path to your real-world training data file (e.g., a CSV).
         # You MUST REPLACE 'your_real_data.csv' with the actual name/path of your file.
         # Place the file in the same directory as this script (Notebook) for this example path to work.
@@ -673,14 +842,16 @@ if __name__ == "__main__":
         if os.path.exists(real_data_file_path):
              logger.info(f"Found real-world data file at '{real_data_file_path}'. Training using real data.")
              # Call train_model, passing the file path. train_model will call load_real_data.
+             # train_model will now use the updated _extract_link_features (18 features).
              if detector.train_model(data_path=real_data_file_path):
                  logger.info("Model training with real data completed successfully.")
+                 logger.info(f"Attempting to save the newly trained model and scaler to '{MODEL_DIR}'.")
                  if detector.save_model():
                       logger.info("Trained model and scaler saved successfully.")
                       model_ready = True
                  else:
                       logger.error("Model training successful, but failed to save the trained model! Analysis may still work for this session.")
-                      model_ready = True
+                      model_ready = True # Model is in memory
              else:
                  logger.critical("Model training with real data failed. Cannot perform analysis tests.")
                  model_ready = False
@@ -689,6 +860,7 @@ if __name__ == "__main__":
              logger.warning(f"Real-world data file not found at '{real_data_file_path}'. Falling back to synthetic data training.")
              synthetic_samples_for_training = 10000
              logger.info(f"Starting synthetic data training with {synthetic_samples_for_training} samples.")
+             # train_model will generate synthetic data and use the updated _extract_link_features (18 features).
              if detector.train_model(n_samples=synthetic_samples_for_training): # Train with synthetic data
                  logger.info("Synthetic data training completed successfully.")
                  logger.info(f"Attempting to save the newly trained model and scaler to '{MODEL_DIR}'.")
@@ -720,6 +892,9 @@ if __name__ == "__main__":
             "https://pay.google.com/", # Real legitimate (example from user)
             "https://www.phonepe.com/", # Real legitimate (example from user)
              "http://fake-bank-login.xyz", # Fraudulent synthetic
+             # Test with a very new domain (if whois works)
+             "http://test-domain-newly-registered.info", # Replace with a domain you know is new/old for testing
+             "http://veryoldlegitimatedomain.com" # Replace with a known old domain for testing
         ]
 
         # Iterate through the test URLs and analyze each one.
@@ -736,6 +911,9 @@ if __name__ == "__main__":
                 risk_level = result.get('risk_level', 'Unknown')
                 confidence = result.get('confidence', 0)
                 risk_factors = result.get('risk_factors', [])
+                # Also print extracted features for debugging
+                # features_extracted = detector._extract_link_features(url)
+                # logger.debug(f"Extracted features: {dict(zip(feature_names, features_extracted))}") # Debug extracted features
 
                 print(f"URL: {url}")
                 print(f"Status: {'Fraudulent' if is_fraud else 'Not Fraudulent'}")

@@ -1,5 +1,3 @@
-# helpers/db/handler.py
-
 # This module contains functions for interacting with the MySQL database
 # and managing the training data file.
 
@@ -18,7 +16,8 @@ import mysql.connector
 from mysql.connector import Error
 # python-dotenv for loading environment variables
 from dotenv import load_dotenv
-# pandas is needed for load_real_data example implementation
+# pandas is needed for load_real_data example implementation (though load_real_data is in the model file, not here)
+# The example usage block below uses pandas, so keep the import for that.
 import pandas as pd
 
 
@@ -275,7 +274,7 @@ def save_analysis_result(user_id, item_type, item_data, analysis_result):
         # logger.debug(f"Attempting to save analysis result for user {user_id_int}, type='{item_type}', data='{item_data[:100]}...'") # Debug query execution intent
 
         cursor = connection.cursor() # Use default cursor
-        # Execute the INSERT query with parameters.
+        # Execute the INSERT query with parameters for safety (prevents SQL injection).
         cursor.execute(query, (user_id_int, item_type, item_data, analysis_result_json))
 
         # Commit the transaction to save the data to the database.
@@ -696,17 +695,23 @@ def get_risk_level_counts(user_id):
 
             if level_extracted is not None:
                  # Remove potential surrounding quotes using strip('"')
+                 # Handle cases where the extracted value might not be a string initially, though JSON_TYPE='STRING' should prevent this.
                  level_cleaned = str(level_extracted).strip('"') # Ensure it's treated as a string first
                  # Add or update the count for the cleaned risk level string in our dictionary
                  # Use get() with default 0 in case a level appears in results but wasn't in our initial dict keys (unlikely with JSON_TYPE check, but safe)
-                 risk_counts[level_cleaned] = risk_counts.get(level_cleaned, 0) + count
+                 # Only add/update if the cleaned level is one of our expected categories to avoid polluting the dict
+                 if level_cleaned in expected_chart_categories:
+                     risk_counts[level_cleaned] = risk_counts.get(level_cleaned, 0) + count
+                 else:
+                     # If an unexpected risk level string appears, log it and potentially add it.
+                     # For consistency with frontend chart, it's better to stick to expected categories.
+                     logger.warning(f"Found unexpected risk level string in DB for user {user_id_int}: '{level_cleaned}'. Ignoring for stats aggregation.")
 
 
-        # At this point, risk_counts contains the counts for all 'STRING' risk_levels found in the database.
-        # It already includes 0 counts for expected categories that weren't found.
-        # Ensure any categories found that were *not* in our initial expected list are also included.
-        # This handles cases if the model ever assigns a new, unexpected risk_level string.
-        # This loop is now correctly adding to the initialized dictionary `risk_counts`.
+        # At this point, risk_counts contains the counts for all 'STRING' risk_levels found in the database
+        # that match the expected categories. It already includes 0 counts for expected categories that weren't found.
+        # No need to explicitly add categories with 0 count, as the initialization already did that.
+
 
         logger.info(f"Risk level counts fetched for user {user_id_int}: {risk_counts}")
         return risk_counts # Return the dictionary of counts
@@ -928,6 +933,13 @@ def append_training_data(file_path, item_data, label):
         bool: True if data was successfully appended, False otherwise.
     """
     try:
+        # Ensure the directory exists before trying to open the file
+        dir_name = os.path.dirname(file_path)
+        if dir_name: # Only create if dir_name is not empty (e.g., if file_path is just a filename)
+             os.makedirs(dir_name, exist_ok=True)
+             logger.debug(f"Ensured directory exists for training data file: '{dir_name}'")
+
+
         # Check if the file exists. If not, create it and write the header.
         # This ensures the file is ready for appending even if it didn't exist before feedback.
         file_exists = os.path.exists(file_path)
@@ -939,6 +951,7 @@ def append_training_data(file_path, item_data, label):
 
             # Write header row ONLY if the file did not exist before opening (it was just created).
             if not file_exists:
+                logger.info(f"Training data file '{os.path.basename(file_path)}' not found, creating with header.")
                 writer.writerow(['url', 'label']) # Write the expected header row
 
             # Write the new data row (item_data and label).
@@ -976,6 +989,9 @@ if __name__ == "__main__":
         conn.close()
     else:
         logger.critical("Simple database connection test failed. Please check your MySQL server and credentials in the .env file.")
+        # Attempt to log a traceback for the connection error specifically if it occurred.
+        # The create_db_connection function logs the specific error, so no need to re-log traceback here.
+        # Just indicate failure and exit.
         sys.exit(1) # Exit if cannot connect
 
     # Test fetching all users
@@ -985,17 +1001,20 @@ if __name__ == "__main__":
         if all_users:
             logger.info(f"Fetched {len(all_users)} users:")
             for user in all_users:
+                # Use print for script output, logger for internal function actions
                 print(f"ID: {user.get('id')}, Email: {user.get('email')}, Username: {user.get('username')}") # Use print for script output
         else:
             logger.info("No users found in the database.")
     else:
+        # get_all_users logs the specific error if it fails.
         logger.error("Failed to fetch users due to a database error (see logs).") # Point user to logs
 
 
     # --- Example: Test History Filtering ---
-    logger.info("\nAttempting to fetch history with filters...")
+    logger.info("\nAttempting to fetch history with various filters...")
     # IMPORTANT: Replace with an actual user ID that exists in your database and has history.
-    test_user_id = 1 # Default test user ID
+    # You can find user IDs by running the get_all_users test above after registering a user via Streamlit.
+    test_user_id = 1 # Default test user ID - **Update this to an actual ID**
 
     # Example filters dictionary for testing the get_user_history function logic.
     # These filters match the parameters expected by the /history API endpoint in app.py.
@@ -1019,76 +1038,57 @@ if __name__ == "__main__":
     filters_url_and_fraud = {'item_type': 'url', 'is_fraud': True}
 
 
-    # Run get_user_history with various filters and print results (using logger for function output, print for summary)
-    logger.info(f"\nFetching history for user {test_user_id} (All items):")
-    history_all = get_user_history(test_user_id, filters_all)
-    print(f"Found {len(history_all)} items matching 'All' filters.")
-    # if history_all: print("First item example:", history_all[0]) # Print first item example
+    # List of filter scenarios to test
+    test_filter_scenarios = {
+        "All items": filters_all,
+        "URL only": filters_url_only,
+        "QR only": filters_qr_only,
+        "Fraudulent only": filters_fraud_only,
+        "Not Fraudulent only": filters_not_fraud_only,
+        "Critical Risk only": filters_critical_risk,
+        "High Risk only": filters_high_risk,
+        "Medium Risk only": filters_medium_risk,
+        "Low Risk only": filters_low_risk,
+        "Safe Risk only": filters_safe_risk,
+        "Unknown Risk only": filters_unknown_risk,
+        "Search term 'example'": filters_search_example,
+        "Compound (URL & High & Not Fraud)": filters_compound,
+        "Compound (URL & Fraudulent)": filters_url_and_fraud,
+    }
 
-
-    logger.info(f"\nFetching history for user {test_user_id} (URL only):")
-    history_url = get_user_history(test_user_id, filters_url_only)
-    print(f"Found {len(history_url)} URL items.")
-
-
-    logger.info(f"\nFetching history for user {test_user_id} (Fraudulent only):")
-    history_fraud = get_user_history(test_user_id, filters_fraud_only)
-    print(f"Found {len(history_fraud)} fraudulent items.")
-
-    logger.info(f"\nFetching history for user {test_user_id} (Not Fraudulent only):")
-    history_not_fraud = get_user_history(test_user_id, filters_not_fraud_only)
-    print(f"Found {len(history_not_fraud)} not fraudulent items.")
-
-
-    # Test specific risk level filters (should now include fraudulent items IF they have that risk_level string)
-    logger.info(f"\nFetching history for user {test_user_id} (Critical Risk only):")
-    history_critical = get_user_history(test_user_id, filters_critical_risk)
-    print(f"Found {len(history_critical)} critical risk items.")
-
-    logger.info(f"\nFetching history for user {test_user_id} (High Risk only):")
-    history_high = get_user_history(test_user_id, filters_high_risk)
-    print(f"Found {len(history_high)} high risk items.")
-
-    logger.info(f"\nFetching history for user {test_user_id} (Medium Risk only):")
-    history_medium = get_user_history(test_user_id, filters_medium_risk)
-    print(f"Found {len(history_medium)} medium risk items.")
-
-    logger.info(f"\nFetching history for user {test_user_id} (Low Risk only):")
-    history_low = get_user_history(test_user_id, filters_low_risk)
-    print(f"Found {len(history_low)} low risk items.")
-
-    logger.info(f"\nFetching history for user {test_user_id} (Safe Risk only):")
-    history_safe = get_user_history(test_user_id, filters_safe_risk)
-    print(f"Found {len(history_safe)} safe risk items.")
-
-    logger.info(f"\nFetching history for user {test_user_id} (Unknown Risk only):")
-    history_unknown = get_user_history(test_user_id, filters_unknown_risk)
-    print(f"Found {len(history_unknown)} unknown risk items.")
-
-    logger.info(f"\nFetching history for user {test_user_id} (Search term 'example'):")
-    history_search = get_user_history(test_user_id, filters_search_example)
-    print(f"Found {len(history_search)} items matching search term.")
-
-    logger.info(f"\nFetching history for user {test_user_id} (Compound Filter - URL & High & Not Fraud):")
-    filters_compound = {'item_type': 'url', 'risk_level': 'High', 'is_fraud': False}
-    history_compound = get_user_history(test_user_id, filters_compound)
-    print(f"Found {len(history_compound)} items matching compound filter.")
-    # if history_compound: print("First compound item example:", history_compound[0])
-
-    logger.info(f"\nFetching history for user {test_user_id} (Compound Filter - URL & Fraudulent):")
-    filters_url_and_fraud = {'item_type': 'url', 'is_fraud': True}
-    history_url_and_fraud = get_user_history(test_user_id, filters_url_and_fraud)
-    print(f"Found {len(history_url_and_fraud)} items matching compound filter.")
+    for scenario_name, filters in test_filter_scenarios.items():
+         logger.info(f"\nFetching history for user {test_user_id} ({scenario_name}):")
+         history_result = get_user_history(test_user_id, filters)
+         # Check if the result is a list as expected
+         if isinstance(history_result, list):
+              print(f"Found {len(history_result)} items matching '{scenario_name}' filters.")
+              # Optionally print the first few items for inspection
+              # if history_result:
+              #      print("  First few items:")
+              #      for item in history_result[:3]:
+              #           print(f"    ID: {item.get('id')}, Type: {item.get('item_type')}, Risk: {item.get('analysis_result', {}).get('risk_level')}, Fraud: {item.get('analysis_result', {}).get('is_fraud')}, Data: {item.get('item_data', 'N/A')[:50]}...")
+         else:
+              logger.error(f"get_user_history returned unexpected type '{type(history_result)}' for scenario '{scenario_name}'.")
 
 
     # --- Test getting analysis stats counts ---
     logger.info(f"\nAttempting to get risk level counts for user {test_user_id}:")
     risk_counts = get_risk_level_counts(test_user_id)
-    print(f"Risk Counts: {risk_counts}")
+    # Check if the result is a dictionary as expected
+    if isinstance(risk_counts, dict):
+        print(f"Risk Counts: {risk_counts}")
+    else:
+        logger.error(f"get_risk_level_counts returned unexpected type '{type(risk_counts)}'.")
+
 
     logger.info(f"\nAttempting to get type counts for user {test_user_id}:")
     type_counts = get_type_counts(test_user_id)
-    print(f"Type Counts: {type_counts}")
+    # Check if the result is a dictionary as expected
+    if isinstance(type_counts, dict):
+        print(f"Type Counts: {type_counts}")
+    else:
+        logger.error(f"get_type_counts returned unexpected type '{type_counts}'.")
+
 
     # --- Test Appending Data to Training File ---
     logger.info("\nAttempting to append data to training file...")
@@ -1096,7 +1096,7 @@ if __name__ == "__main__":
     # Assuming the file is in the Notebook directory relative to the project root
     test_training_data_file_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'Notebook', 'your_real_data.csv') # Go up two levels from helpers/db to project root, then into Notebook
 
-    test_item_data = "http://example.com/feedback/test"
+    test_item_data = f"http://example.com/feedback/test-{int(time.time())}" # Use timestamp to make it unique
     test_label = 0 # Assuming it's legitimate feedback
 
     logger.info(f"Appending '{test_item_data}' with label {test_label} to '{os.path.basename(test_training_data_file_path)}'")
@@ -1104,11 +1104,43 @@ if __name__ == "__main__":
 
     if append_success:
         logger.info("Data appended successfully.")
-        # Verify by trying to load the file content (optional)
+        # Verify by trying to load the file content (optional) - Be cautious with large files!
         try:
+            # Read only the last few lines to check the append happened
+            print(f"Checking last lines of '{os.path.basename(test_training_data_file_path)}'...")
+            num_lines_to_check = 5
             with open(test_training_data_file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            logger.debug(f"Current content of training file:\n---\n{content}\n---")
+                # Move to the end and then back
+                f.seek(0, os.SEEK_END)
+                file_size = f.tell()
+                # Read backwards line by line
+                lines = []
+                line = ''
+                for _ in range(num_lines_to_check + 2): # Read a bit more just in case
+                     try:
+                          f.seek(f.tell() - 2, os.SEEK_SET) # Go back 2 bytes
+                     except OSError: # Handle seeking before start of file
+                          f.seek(0, os.SEEK_SET)
+                          break
+                     char = f.read(1)
+                     if char == '\n':
+                          lines.append(line[::-1]) # Reverse line and append
+                          line = ''
+                          if len(lines) >= num_lines_to_check:
+                               break
+                     else:
+                          line += char
+
+                if line: # Append last line if file didn't end with newline
+                     lines.append(line[::-1])
+
+            # Print the last lines read (in correct order)
+            print("-- Last lines of file --")
+            for l in reversed(lines):
+                 print(l)
+            print("-- End of file content --")
+
+
         except Exception as e:
              logger.error(f"Error reading training file after append: {e}")
     else:
@@ -1116,4 +1148,4 @@ if __name__ == "__main__":
     # --- End Test Appending ---
 
 
-    print("\n--- Testing Complete ---")
+    print("\n--- helpers/db/handler.py Testing Complete ---")
